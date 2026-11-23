@@ -1,0 +1,3 @@
+# IDE config when the repo root is opened in Android Studio / IntelliJ
+/.idea/
+*.iml

@@ -1,0 +1,62 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        // String ids (e.g. "l-rina") so the ids the Flutter app already uses
+        // in its synthetic seed stay valid when it switches to this API.
+        Schema::create('lecturers', function (Blueprint $table) {
+            $table->string('id', 64)->primary();
+            $table->string('name');
+            $table->string('prodi')->index();
+            $table->string('faculty');
+            $table->timestamps();
+        });
+
+        Schema::create('users', function (Blueprint $table) {
+            $table->string('id', 64)->primary();
+            $table->string('name');
+            $table->string('email')->unique();
+            $table->string('password');
+            // Role is always assigned by the server (seed / register default),
+            // never chosen by the client.
+            $table->enum('role', ['mahasiswa', 'dosen', 'petugas'])->default('mahasiswa');
+            $table->string('subtitle')->default('Mahasiswa');
+            $table->string('lecturer_id', 64)->nullable();
+            $table->json('scope_prodi')->nullable();
+            $table->unsignedInteger('points')->default(0);
+            $table->rememberToken();
+            $table->timestamps();
+
+            $table->foreign('lecturer_id')->references('id')->on('lecturers')->nullOnDelete();
+        });
+
+        Schema::create('password_reset_tokens', function (Blueprint $table) {
+            $table->string('email')->primary();
+            $table->string('token');
+            $table->timestamp('created_at')->nullable();
+        });
+
+        Schema::create('sessions', function (Blueprint $table) {
+            $table->string('id')->primary();
+            $table->string('user_id', 64)->nullable()->index();
+            $table->string('ip_address', 45)->nullable();
+            $table->text('user_agent')->nullable();
+            $table->longText('payload');
+            $table->integer('last_activity')->index();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('sessions');
+        Schema::dropIfExists('password_reset_tokens');
+        Schema::dropIfExists('users');
+        Schema::dropIfExists('lecturers');
+    }
+};

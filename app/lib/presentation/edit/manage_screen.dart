@@ -8,32 +8,24 @@ import '../../core/view_state.dart';
 import '../../data/models/account.dart';
 import '../../data/models/session.dart';
 import '../../data/repositories/repositories.dart';
-import '../../domain/session_permissions.dart';
 import '../auth/auth_controller.dart';
 import '../session/session_detail_screen.dart';
 import '../widgets/async_state_view.dart';
-import '../widgets/session_widgets.dart';
+import '../widgets/ruangin_widgets.dart';
 
-/// Sessions the signed-in lecturer/officer may edit on the selected date.
+/// Sessions the signed-in lecturer/officer may edit on the selected date
+/// (`GET /sessions?date=…&editable=1`).
 class ManageController extends AsyncController<List<Session>> {
-  ManageController(this._repo, this._account, super.clock)
-      : _date = dateOnly(clock.now());
+  ManageController(this._repo, super.clock) : _date = dateOnly(clock.now());
 
   final SessionRepository _repo;
-  final Account _account;
   DateTime _date;
 
   DateTime get date => _date;
 
   @override
-  Future<Result<List<Session>>> fetch() async {
-    final r = await _repo.onDate(_date);
-    return switch (r) {
-      Success(:final value) => Success(List.unmodifiable(
-          value.where((s) => canEditSession(_account, s)))),
-      Failure(:final failure) => Failure(failure),
-    };
-  }
+  Future<Result<List<Session>>> fetch() =>
+      _repo.onDate(_date, editableOnly: true);
 
   void shift(int days) {
     _date = DateTime(_date.year, _date.month, _date.day + days);
@@ -49,9 +41,9 @@ class ManageScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final account = context.read<AuthController>().account!;
     return ChangeNotifierProvider(
-      create: (c) => ManageController(
-          c.read<SessionRepository>(), account, c.read<Clock>())
-        ..load(),
+      create: (c) =>
+          ManageController(c.read<SessionRepository>(), c.read<Clock>())
+            ..load(),
       child: Consumer<ManageController>(
         builder: (context, controller, _) => Column(
           children: [
@@ -67,14 +59,24 @@ class ManageScreen extends StatelessWidget {
             Row(
               children: [
                 IconButton(
-                    onPressed: () => controller.shift(-1),
-                    icon: const Icon(Icons.chevron_left)),
+                  key: const Key('manage-prev'),
+                  tooltip: 'Hari sebelumnya',
+                  onPressed: () => controller.shift(-1),
+                  icon: const Icon(Icons.chevron_left),
+                ),
                 Expanded(
-                    child: Text(formatDate(controller.date),
-                        textAlign: TextAlign.center)),
+                  child: Text(
+                    formatDate(controller.date),
+                    key: const Key('manage-date'),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
                 IconButton(
-                    onPressed: () => controller.shift(1),
-                    icon: const Icon(Icons.chevron_right)),
+                  key: const Key('manage-next'),
+                  tooltip: 'Hari berikutnya',
+                  onPressed: () => controller.shift(1),
+                  icon: const Icon(Icons.chevron_right),
+                ),
               ],
             ),
             Expanded(
@@ -82,18 +84,18 @@ class ManageScreen extends StatelessWidget {
                 state: controller.state,
                 onRetry: controller.load,
                 emptyTitle: 'Tidak ada sesi yang bisa Anda ubah di tanggal ini',
-                builder: (context, sessions) => ListView(
+                builder: (context, sessions) => ListView.separated(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  children: [
-                    for (final s in sessions)
-                      SessionTile(
-                        session: s,
-                        onTap: () async {
-                          await openSessionDetail(context, s.id);
-                          controller.load();
-                        },
-                      ),
-                  ],
+                  itemCount: sessions.length,
+                  separatorBuilder: (_, _) =>
+                      const Divider(height: 1, indent: 20, endIndent: 20),
+                  itemBuilder: (context, i) => SessionRow(
+                    session: sessions[i],
+                    onTap: () async {
+                      await openSessionDetail(context, sessions[i].id);
+                      controller.load();
+                    },
+                  ),
                 ),
               ),
             ),

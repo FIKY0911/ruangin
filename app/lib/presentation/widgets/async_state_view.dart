@@ -13,6 +13,7 @@ class AsyncStateView<T> extends StatelessWidget {
     required this.emptyTitle,
     this.emptyMessage,
     this.emptyImage,
+    this.showFreshness = true,
   });
 
   final ViewState<T> state;
@@ -22,55 +23,59 @@ class AsyncStateView<T> extends StatelessWidget {
   final String? emptyMessage;
   final String? emptyImage;
 
+  /// Hide the "Diperbarui HH.MM" strip (stale data is always shown).
+  final bool showFreshness;
+
   @override
   Widget build(BuildContext context) {
     return switch (state) {
       ViewLoading() => const Center(
-          key: Key('state-loading'),
-          child: CircularProgressIndicator(),
-        ),
+        key: Key('state-loading'),
+        child: CircularProgressIndicator(),
+      ),
       ViewError(:final message) => _Scrollable(
-          onRefresh: onRetry,
-          child: _Message(
-            key: const Key('state-error'),
-            icon: Icons.cloud_off_outlined,
-            title: 'Gagal memuat',
-            message: message,
-            action: FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Coba lagi'),
-            ),
+        onRefresh: onRetry,
+        child: _Message(
+          key: const Key('state-error'),
+          icon: Icons.cloud_off_outlined,
+          title: 'Gagal memuat',
+          message: message,
+          action: FilledButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Coba lagi'),
           ),
         ),
+      ),
       ViewEmpty(:final fetchedAt) => _Scrollable(
-          onRefresh: onRetry,
-          child: _Message(
-            key: const Key('state-empty'),
-            icon: Icons.inbox_outlined,
-            image: emptyImage,
-            title: emptyTitle,
-            message: [
-              ?emptyMessage,
-              'Diperbarui ${formatTime(fetchedAt)}',
-            ].join('\n'),
-          ),
+        onRefresh: onRetry,
+        child: _Message(
+          key: const Key('state-empty'),
+          icon: Icons.inbox_outlined,
+          image: emptyImage,
+          title: emptyTitle,
+          message: [
+            ?emptyMessage,
+            'Diperbarui ${formatTime(fetchedAt)}',
+          ].join('\n'),
         ),
+      ),
       ViewData(:final data, :final fetchedAt, :final staleReason) => Column(
-          children: [
+        children: [
+          if (showFreshness || staleReason != null)
             FreshnessBanner(
               fetchedAt: fetchedAt,
               staleReason: staleReason,
               onRetry: onRetry,
             ),
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: onRetry,
-                child: builder(context, data),
-              ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: onRetry,
+              child: builder(context, data),
             ),
-          ],
-        ),
+          ),
+        ],
+      ),
     };
   }
 }
@@ -115,7 +120,10 @@ class FreshnessBanner extends StatelessWidget {
             Expanded(
               child: Text(
                 'Data lama · diperbarui ${formatDateTime(fetchedAt)}\n$staleReason',
-                style: TextStyle(color: scheme.onTertiaryContainer, fontSize: 12),
+                style: TextStyle(
+                  color: scheme.onTertiaryContainer,
+                  fontSize: 12,
+                ),
               ),
             ),
             TextButton(onPressed: onRetry, child: const Text('Coba lagi')),
@@ -178,11 +186,17 @@ class _Message extends StatelessWidget {
           else
             Icon(icon, size: 56, color: theme.colorScheme.outline),
           const SizedBox(height: 16),
-          Text(title,
-              style: theme.textTheme.titleMedium, textAlign: TextAlign.center),
+          Text(
+            title,
+            style: theme.textTheme.titleMedium,
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 8),
-          Text(message,
-              style: theme.textTheme.bodySmall, textAlign: TextAlign.center),
+          Text(
+            message,
+            style: theme.textTheme.bodySmall,
+            textAlign: TextAlign.center,
+          ),
           if (action != null) ...[const SizedBox(height: 16), action!],
         ],
       ),

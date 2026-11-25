@@ -6,8 +6,8 @@ import '../widgets/auth_components.dart';
 import 'auth_form_controllers.dart';
 import 'auth_routes.dart';
 
-/// docs/design/register.jpg. Creates a local mahasiswa account, then opens
-/// Login with the email prefilled.
+/// docs/design/register.jpg. Creates a mahasiswa account on the server
+/// (`POST /auth/register`), then opens Login with the email prefilled.
 class RegisterScreen extends StatelessWidget {
   const RegisterScreen({super.key});
 

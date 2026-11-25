@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../core/brand.dart';
-import '../data/models/account.dart';
 import 'auth/auth_controller.dart';
-import 'demo/demo_panel_screen.dart';
 import 'edit/manage_screen.dart';
-import 'notifications/notification_center.dart';
-import 'notifications/notifications_screen.dart';
-import 'search/search_screen.dart';
+import 'home/home_screen.dart';
+import 'profile/profile_screen.dart';
+import 'reports/reports_tab.dart';
 import 'session/followed_screen.dart';
+import 'widgets/ruangin_widgets.dart';
 
+/// Bottom navigation from image/ui-ux: Beranda · Jadwal · Laporan · Profil.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -24,73 +23,93 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final account = context.watch<AuthController>().account!;
-    final unread = context.watch<NotificationCenter>().unread;
-    final isEditor = account.role != UserRole.mahasiswa;
-
-    final tabs = <(String, Widget, NavigationDestination)>[
-      ('Cari dosen', const SearchScreen(),
-          const NavigationDestination(icon: Icon(Icons.search), label: 'Cari')),
-      ('Sesi diikuti', const FollowedScreen(),
-          const NavigationDestination(
-              icon: Icon(Icons.bookmark_outline), label: 'Diikuti')),
-      if (isEditor)
-        ('Kelola sesi', const ManageScreen(),
-            const NavigationDestination(
-                icon: Icon(Icons.edit_calendar_outlined), label: 'Kelola')),
-      ('Notifikasi', const NotificationsScreen(),
-          NavigationDestination(
-            key: const Key('nav-notifications'),
-            icon: Badge(
-              isLabelVisible: unread > 0,
-              label: Text('$unread'),
-              child: const Icon(Icons.notifications_outlined),
-            ),
-            label: 'Notifikasi',
-          )),
-    ];
-    final index = _index.clamp(0, tabs.length - 1);
-
     return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            Image.asset(BrandAssets.icon, height: 28),
-            const SizedBox(width: 10),
-            Text(tabs[index].$1),
-          ],
-        ),
-        actions: [
-          PopupMenuButton<String>(
-            key: const Key('account-menu'),
-            icon: const Icon(Icons.account_circle_outlined),
-            onSelected: (v) async {
-              if (v == 'demo') {
-                await Navigator.of(context).push(MaterialPageRoute<void>(
-                    builder: (_) => const DemoPanelScreen()));
-              } else if (v == 'logout') {
-                await context.read<AuthController>().logout();
-              }
-            },
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                enabled: false,
-                child: Text('${account.name}\n${account.role.label} · ${account.subtitle}'),
-              ),
-              const PopupMenuItem(value: 'demo', child: Text('Panel demo')),
-              const PopupMenuItem(
-                  value: 'logout', key: Key('logout'), child: Text('Keluar')),
-            ],
+      backgroundColor: Colors.white,
+      body: IndexedStack(
+        key: ValueKey(account.id),
+        index: _index,
+        children: [
+          HomeScreen(onOpenMenu: () => setState(() => _index = 3)),
+          const ScheduleTab(),
+          const ReportsTab(),
+          const ProfileScreen(),
+        ],
+      ),
+      bottomNavigationBar: NavigationBar(
+        backgroundColor: Colors.white,
+        indicatorColor: Colors.transparent,
+        selectedIndex: _index,
+        onDestinationSelected: (i) => setState(() => _index = i),
+        destinations: const [
+          NavigationDestination(
+            key: Key('nav-home'),
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home_rounded),
+            label: 'Beranda',
+          ),
+          NavigationDestination(
+            key: Key('nav-schedule'),
+            icon: Icon(Icons.calendar_today_outlined),
+            selectedIcon: Icon(Icons.calendar_today),
+            label: 'Jadwal',
+          ),
+          NavigationDestination(
+            key: Key('nav-reports'),
+            icon: Icon(Icons.bar_chart_outlined),
+            selectedIcon: Icon(Icons.bar_chart),
+            label: 'Laporan',
+          ),
+          NavigationDestination(
+            key: Key('nav-profile'),
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Profil',
           ),
         ],
       ),
-      body: IndexedStack(
-        index: index,
-        children: [for (final t in tabs) t.$2],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: [for (final t in tabs) t.$3],
+    );
+  }
+}
+
+/// Jadwal tab: followed sessions; lecturers/officers also get "Kelola".
+class ScheduleTab extends StatelessWidget {
+  const ScheduleTab({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final account = context.watch<AuthController>().account!;
+    if (!account.isEditor) {
+      return const SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SectionTitle(
+              'Sesi diikuti',
+              subtitle: 'Anda dapat kabar saat ruang, jam, atau status berubah',
+            ),
+            Expanded(child: FollowedScreen()),
+          ],
+        ),
+      );
+    }
+    return const SafeArea(
+      child: DefaultTabController(
+        length: 2,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SectionTitle('Jadwal'),
+            TabBar(
+              tabs: [
+                Tab(key: Key('tab-manage'), text: 'Kelola'),
+                Tab(key: Key('tab-followed'), text: 'Diikuti'),
+              ],
+            ),
+            Expanded(
+              child: TabBarView(children: [ManageScreen(), FollowedScreen()]),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -3,8 +3,9 @@ import 'package:provider/provider.dart';
 
 import '../../core/formatters.dart';
 import '../../data/models/session.dart';
-import '../../domain/session_service.dart';
+import '../../data/repositories/repositories.dart';
 import '../auth/auth_controller.dart';
+import '../widgets/ruangin_widgets.dart';
 import '../widgets/session_widgets.dart';
 import 'edit_session_controller.dart';
 
@@ -21,7 +22,7 @@ class EditSessionScreen extends StatelessWidget {
       create: (c) => EditSessionController(
         session: session,
         actor: c.read<AuthController>().account!,
-        service: c.read<SessionService>(),
+        repo: c.read<SessionRepository>(),
       ),
       child: const _EditView(),
     );
@@ -37,7 +38,8 @@ class _EditView extends StatefulWidget {
 
 class _EditViewState extends State<_EditView> {
   late final TextEditingController _room = TextEditingController(
-      text: context.read<EditSessionController>().draftRoom);
+    text: context.read<EditSessionController>().draftRoom,
+  );
 
   @override
   void dispose() {
@@ -46,10 +48,11 @@ class _EditViewState extends State<_EditView> {
   }
 
   /// Shows a "cek lagi" dialog, then runs [action] and shows its message.
+  /// On 409 staleVersion offers to reload the latest data.
   Future<void> _confirmThen({
     required String title,
     required String summary,
-    required Future<String> Function() action,
+    required Future<EditOutcome> Function() action,
     bool destructive = false,
   }) async {
     final ok = await showDialog<bool>(
@@ -59,13 +62,15 @@ class _EditViewState extends State<_EditView> {
         content: Text('$summary\n\nPengikut sesi akan menerima notifikasi.'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(c, false),
-              child: const Text('Kembali')),
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Kembali'),
+          ),
           FilledButton(
             key: const Key('confirm-save'),
             style: destructive
                 ? FilledButton.styleFrom(
-                    backgroundColor: Theme.of(c).colorScheme.error)
+                    backgroundColor: Theme.of(c).colorScheme.error,
+                  )
                 : null,
             onPressed: () => Navigator.pop(c, true),
             child: const Text('Simpan'),
@@ -74,14 +79,47 @@ class _EditViewState extends State<_EditView> {
       ),
     );
     if (ok != true || !mounted) return;
-    final message = await action();
+    final controller = context.read<EditSessionController>();
+    final outcome = await action();
     if (!mounted) return;
-    _room.text = context.read<EditSessionController>().draftRoom;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    _room.text = controller.draftRoom;
+    if (outcome.stale) {
+      final reload = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          key: const Key('stale-dialog'),
+          title: const Text('Sesi sudah diubah'),
+          content: Text(
+            '${outcome.message}\n\nMuat data terbaru sebelum '
+            'mengubah lagi.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('Nanti'),
+            ),
+            FilledButton(
+              key: const Key('stale-reload'),
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text('Muat ulang'),
+            ),
+          ],
+        ),
+      );
+      if (reload != true || !mounted) return;
+      final msg = await controller.reload();
+      if (!mounted) return;
+      _room.text = controller.draftRoom;
+      showSnack(context, msg);
+      return;
+    }
+    showSnack(context, outcome.message);
   }
 
-  Future<void> _pickTime(DateTime initial, void Function(int, int) onPicked) async {
+  Future<void> _pickTime(
+    DateTime initial,
+    void Function(int, int) onPicked,
+  ) async {
     final picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(initial),
@@ -107,8 +145,10 @@ class _EditViewState extends State<_EditView> {
           children: [
             Text(s.courseName, style: theme.textTheme.titleLarge),
             Text('${formatDate(s.start)} · Prodi ${s.prodi}'),
-            Text('Sebagai: ${c.actor.role.label} · ${c.actor.name}',
-                style: theme.textTheme.bodySmall),
+            Text(
+              'Sebagai: ${c.actor.role.label} · ${c.actor.name}',
+              style: theme.textTheme.bodySmall,
+            ),
             const SizedBox(height: 8),
             StatusChip(session: s),
             if (c.busy) const LinearProgressIndicator(),
@@ -121,17 +161,19 @@ class _EditViewState extends State<_EditView> {
               enabled: c.isEditable,
               onChanged: c.setRoom,
               decoration: const InputDecoration(
-                  border: OutlineInputBorder(), hintText: 'mis. Ruang 402'),
+                border: OutlineInputBorder(),
+                hintText: 'mis. Ruang 402',
+              ),
             ),
             const SizedBox(height: 8),
             FilledButton(
               key: const Key('save-room'),
               onPressed: c.isEditable
                   ? () => _confirmThen(
-                        title: 'Pindah ruang?',
-                        summary: c.roomChangeSummary,
-                        action: c.saveRoom,
-                      )
+                      title: 'Pindah ruang?',
+                      summary: c.roomChangeSummary,
+                      action: c.saveRoom,
+                    )
                   : null,
               child: const Text('Simpan ruang'),
             ),
@@ -163,10 +205,10 @@ class _EditViewState extends State<_EditView> {
             FilledButton(
               onPressed: c.isEditable
                   ? () => _confirmThen(
-                        title: 'Ubah jam?',
-                        summary: c.timeChangeSummary,
-                        action: c.saveTime,
-                      )
+                      title: 'Ubah jam?',
+                      summary: c.timeChangeSummary,
+                      action: c.saveTime,
+                    )
                   : null,
               child: const Text('Simpan jam'),
             ),
@@ -178,11 +220,11 @@ class _EditViewState extends State<_EditView> {
               icon: const Icon(Icons.how_to_reg),
               onPressed: c.canRecordAttendance
                   ? () => _confirmThen(
-                        title: 'Catat kehadiran?',
-                        summary:
-                            'Sesi akan berstatus "Tercatat" dengan jam sekarang.',
-                        action: c.recordAttendance,
-                      )
+                      title: 'Catat kehadiran?',
+                      summary:
+                          'Sesi akan berstatus "Tercatat" dengan jam sekarang.',
+                      action: c.recordAttendance,
+                    )
                   : null,
               label: const Text('Catat kehadiran kelas'),
             ),
@@ -191,14 +233,15 @@ class _EditViewState extends State<_EditView> {
               key: const Key('cancel-session'),
               icon: const Icon(Icons.cancel_outlined),
               style: OutlinedButton.styleFrom(
-                  foregroundColor: theme.colorScheme.error),
+                foregroundColor: theme.colorScheme.error,
+              ),
               onPressed: c.isEditable
                   ? () => _confirmThen(
-                        title: 'Batalkan sesi?',
-                        summary: c.cancelSummary,
-                        destructive: true,
-                        action: c.cancelSession,
-                      )
+                      title: 'Batalkan sesi?',
+                      summary: c.cancelSummary,
+                      destructive: true,
+                      action: c.cancelSession,
+                    )
                   : null,
               label: const Text('Batalkan sesi'),
             ),

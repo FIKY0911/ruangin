@@ -5,13 +5,18 @@ import 'package:ruangin/presentation/auth/auth_controller.dart';
 import 'package:ruangin/presentation/auth/auth_form_controllers.dart';
 
 import 'auth_service_test.dart' show makeService;
+import 'fake_backend.dart';
 
 void main() {
+  late FakeBackend backend;
+  late InMemoryStore store;
   late AuthService service;
   late AuthController auth;
 
   setUp(() async {
-    service = makeService(InMemoryStore());
+    backend = FakeBackend();
+    store = InMemoryStore();
+    service = makeService(backend, store);
     auth = AuthController(service);
     await auth.restore();
   });
@@ -47,30 +52,49 @@ void main() {
     expect(c.errorMessage, isNull);
   });
 
-  test('RegisterController: success returns account; duplicate shows error', () async {
-    RegisterController form() => RegisterController(service)
-      ..setEmail('sari@kampus.ac.id')
-      ..setPassword('rahasia123')
-      ..setConfirmPassword('rahasia123');
-    expect((await form().submit())?.email, 'sari@kampus.ac.id');
-    final dup = form();
-    expect(await dup.submit(), isNull);
-    expect(dup.errorFor(AuthField.email), 'Email sudah terdaftar.');
-  });
+  test(
+    'RegisterController: success returns account; duplicate shows error',
+    () async {
+      RegisterController form() => RegisterController(service)
+        ..setEmail('sari@kampus.ac.id')
+        ..setPassword('rahasia123')
+        ..setConfirmPassword('rahasia123');
+      expect((await form().submit())?.email, 'sari@kampus.ac.id');
+      final dup = form();
+      expect(await dup.submit(), isNull);
+      expect(dup.errorFor(AuthField.email), 'Email sudah terdaftar.');
+    },
+  );
 
-  test('AuthController.logout clears account', () async {
-    await LoginController(service, auth)
-        .let((c) => c..setEmail('raka@demo.ruangin.id')..setPassword('ruangin123'))
+  test(
+    'AuthController: logout clears account; 401 expires the session',
+    () async {
+      await (LoginController(service, auth)
+            ..setEmail('nadia@demo.ruangin.id')
+            ..setPassword('ruangin123'))
+          .submit();
+      expect(auth.isSignedIn, isTrue);
+      await auth.logout();
+      expect(auth.isSignedIn, isFalse);
+
+      await (LoginController(service, auth)
+            ..setEmail('nadia@demo.ruangin.id')
+            ..setPassword('ruangin123'))
+          .submit();
+      auth.onSessionExpired();
+      expect(auth.isSignedIn, isFalse);
+      expect(auth.takeSignedOutReason(), contains('Sesi login berakhir'));
+      expect(auth.takeSignedOutReason(), isNull, reason: 'shown once');
+    },
+  );
+
+  test('AuthController.refreshAccount picks up new points', () async {
+    await (LoginController(service, auth)
+          ..setEmail('nadia@demo.ruangin.id')
+          ..setPassword('ruangin123'))
         .submit();
-    expect(auth.isSignedIn, isTrue);
-    await auth.logout();
-    expect(auth.isSignedIn, isFalse);
-    final fresh = AuthController(service);
-    await fresh.restore();
-    expect(fresh.isSignedIn, isFalse);
+    backend.users['u-nadia']!['points'] = 30;
+    await auth.refreshAccount();
+    expect(auth.account!.points, 30);
   });
-}
-
-extension _Let<T> on T {
-  R let<R>(R Function(T) f) => f(this);
 }

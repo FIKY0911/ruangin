@@ -1,24 +1,15 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ruangin/core/clock.dart';
-import 'package:ruangin/core/demo_settings.dart';
 import 'package:ruangin/core/result.dart';
-import 'package:ruangin/data/fixtures/seed_data.dart';
 import 'package:ruangin/data/local/key_value_store.dart';
 import 'package:ruangin/data/models/account.dart';
-import 'package:ruangin/data/repositories/local_repositories.dart';
+import 'package:ruangin/data/remote/api_client.dart';
+import 'package:ruangin/data/repositories/api_repositories.dart';
 import 'package:ruangin/domain/auth_service.dart';
-import 'package:ruangin/domain/password_hasher.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-AuthService makeService(KeyValueStore store) {
-  final clock = FixedClock(DateTime(2026, 11, 23, 8));
-  return AuthService(
-    repo: LocalAuthRepository(
-        SeedData.parse(clock.now()), store, DemoSettings(latency: Duration.zero)),
-    hasher: Pbkdf2PasswordHasher(iterations: 1000),
-    clock: clock,
-  );
-}
+import 'fake_backend.dart';
+
+AuthService makeService(FakeBackend backend, KeyValueStore store) =>
+    AuthService(repo: ApiAuthRepository(backend.api(store)));
 
 const _valid = RegisterInput(
   email: 'Sari@Kampus.ac.id',
@@ -29,126 +20,114 @@ const _valid = RegisterInput(
 AuthFailure _fail(Result<Object?> r) => (r as Failure).failure as AuthFailure;
 
 void main() {
+  late FakeBackend backend;
   late InMemoryStore store;
   late AuthService service;
 
   setUp(() {
+    backend = FakeBackend();
     store = InMemoryStore();
-    service = makeService(store);
+    service = makeService(backend, store);
   });
 
   group('register', () {
-    test('creates a mahasiswa account with a hashed password', () async {
-      final r = await service.register(_valid);
-      final account = r.valueOrNull!;
-      expect(account.role, UserRole.mahasiswa);
-      expect(account.email, 'sari@kampus.ac.id');
-      expect(account.name, 'sari', reason: 'name derived from email');
-      final raw = store.getString(StoreKeys.users)!;
-      expect(raw, contains('sari@kampus.ac.id'));
-      expect(raw, isNot(contains('rahasia123')), reason: 'no plain text password');
-    });
+    test(
+      'creates a mahasiswa account on the server without signing in',
+      () async {
+        final account = (await service.register(_valid)).valueOrNull!;
+        expect(account.role, UserRole.mahasiswa);
+        expect(account.email, 'sari@kampus.ac.id');
+        expect(account.name, 'sari');
+        expect(TokenStore(store).token, isNull, reason: 'register != login');
+        final body = backend.calls('POST', '/auth/register').single.body;
+        expect(body, contains('"confirmPassword":"rahasia123"'));
+        expect(body, contains('sari@kampus.ac.id'), reason: 'email normalised');
+      },
+    );
 
-    test('ids stay unique even with a fixed clock', () async {
-      final a = await service.register(_valid);
-      final b = await service.register(const RegisterInput(
-          email: 'lain@kampus.ac.id',
-          password: 'rahasia123',
-          confirmPassword: 'rahasia123'));
-      expect(a.valueOrNull!.id, isNot(b.valueOrNull!.id));
-    });
-
-    test('does not sign in automatically', () async {
-      await service.register(_valid);
-      expect(await service.restoreSession(), isNull);
-    });
-
-    test('rejects invalid input with field errors', () async {
-      final r = await service.register(const RegisterInput( email: 'bukan-email', password: '123', confirmPassword: '1'));
+    test('validates locally first (no request)', () async {
+      final r = await service.register(
+        const RegisterInput(
+          email: 'bukan-email',
+          password: 'pendek',
+          confirmPassword: 'beda',
+        ),
+      );
       final f = _fail(r);
       expect(f.code, AuthErrorCode.invalidInput);
-      expect(f.fieldErrors.keys, unorderedEquals(AuthField.values));
-      expect(store.getString(StoreKeys.users), isNull);
+      expect(f.fieldErrors.keys, containsAll(AuthField.values));
+      expect(backend.requests, isEmpty);
     });
 
-    test('rejects an email that is already registered (case-insensitive)', () async {
+    test('duplicate email maps the server error to the email field', () async {
       await service.register(_valid);
-      final f = _fail(await service.register(const RegisterInput(
-          email: ' SARI@kampus.AC.ID',
-          password: 'rahasia999',
-          confirmPassword: 'rahasia999')));
+      final f = _fail(await service.register(_valid));
       expect(f.code, AuthErrorCode.emailTaken);
       expect(f.fieldErrors[AuthField.email], 'Email sudah terdaftar.');
-    });
-
-    test('rejects a seeded demo email', () async {
-      final f = _fail(await service.register(const RegisterInput(
-          email: 'nadia@demo.ruangin.id',
-          password: 'rahasia123',
-          confirmPassword: 'rahasia123')));
-      expect(f.code, AuthErrorCode.emailTaken);
     });
   });
 
   group('login', () {
-    test('registered user can log in; session persists across restarts', () async {
-      await service.register(_valid);
-      final r = await service.login('sari@kampus.ac.id', 'rahasia123');
-      expect(r.valueOrNull!.email, 'sari@kampus.ac.id');
-
-      final restarted = makeService(store);
-      expect((await restarted.restoreSession())?.email, 'sari@kampus.ac.id');
+    test('stores the bearer token; role comes from the server', () async {
+      final a = (await service.login(
+        ' RINA@demo.ruangin.id ',
+        'ruangin123',
+      )).valueOrNull!;
+      expect(a.role, UserRole.dosen);
+      expect(a.lecturerId, 'l-rina');
+      expect(TokenStore(store).token, isNotNull);
     });
 
-    test('seed demo account logs in with its role from seed', () async {
-      final r = await service.login('Rina@Demo.Ruangin.id', 'ruangin123');
-      expect(r.valueOrNull!.role, UserRole.dosen);
-    });
-
-    test('unknown email => akun tidak ditemukan', () async {
-      final f = _fail(await service.login('nobody@kampus.ac.id', 'rahasia123'));
-      expect(f.code, AuthErrorCode.accountNotFound);
-      expect(f.message, contains('Akun tidak ditemukan'));
-      expect(await service.restoreSession(), isNull);
-    });
-
-    test('wrong password => password salah', () async {
-      final f = _fail(await service.login('nadia@demo.ruangin.id', 'salahsalah'));
+    test('wrong password and unknown account map to field errors', () async {
+      var f = _fail(await service.login('nadia@demo.ruangin.id', 'salahsalah'));
       expect(f.code, AuthErrorCode.wrongPassword);
+      expect(f.fieldErrors[AuthField.password], 'Password salah.');
       expect(f.message, 'Password salah.');
-      expect(await service.restoreSession(), isNull);
+
+      f = _fail(await service.login('siapa@kampus.ac.id', 'ruangin123'));
+      expect(f.code, AuthErrorCode.accountNotFound);
+      expect(f.fieldErrors[AuthField.email], 'Akun tidak ditemukan.');
     });
 
-    test('empty fields are validation errors, no lookup', () async {
-      final f = _fail(await service.login('', ''));
-      expect(f.code, AuthErrorCode.invalidInput);
-      expect(f.fieldErrors.keys,
-          unorderedEquals([AuthField.email, AuthField.password]));
-    });
-
-    test('storage failure maps to a storage error', () async {
-      final failing = AuthService(
-        repo: LocalAuthRepository(SeedData.parse(DateTime(2026)), store,
-            DemoSettings(latency: Duration.zero)..simulateFailure = true),
-        hasher: Pbkdf2PasswordHasher(iterations: 1000),
-        clock: const SystemClock(),
+    test('unreachable server is reported with its message', () async {
+      backend.offline = true;
+      final f = _fail(
+        await service.login('nadia@demo.ruangin.id', 'ruangin123'),
       );
-      final f = _fail(await failing.login('nadia@demo.ruangin.id', 'ruangin123'));
-      expect(f.code, AuthErrorCode.storage);
+      expect(f.code, AuthErrorCode.server);
+      expect(f.message, contains('Tidak bisa terhubung'));
     });
   });
 
-  test('logout clears the persisted session', () async {
-    await service.login('nadia@demo.ruangin.id', 'ruangin123');
-    await service.logout();
-    expect(await makeService(store).restoreSession(), isNull);
-  });
+  group('session', () {
+    test('restore validates the token with /auth/me', () async {
+      await service.login('nadia@demo.ruangin.id', 'ruangin123');
+      final restored = await makeService(backend, store).restoreSession();
+      expect(restored?.name, 'Nadia Putri');
+      expect(restored?.points, 10);
+      expect(backend.calls('GET', '/auth/me'), isNotEmpty);
+    });
 
-  test('session persists through real shared_preferences', () async {
-    SharedPreferences.setMockInitialValues({});
-    final prefsStore = SharedPreferencesStore(await SharedPreferences.getInstance());
-    await makeService(prefsStore).login('hendra@demo.ruangin.id', 'ruangin123');
-    final again = SharedPreferencesStore(await SharedPreferences.getInstance());
-    expect((await makeService(again).restoreSession())?.role, UserRole.petugas);
+    test('restore with a revoked token signs out', () async {
+      await service.login('nadia@demo.ruangin.id', 'ruangin123');
+      backend.tokens.clear();
+      expect(await makeService(backend, store).restoreSession(), isNull);
+      expect(TokenStore(store).token, isNull);
+    });
+
+    test('restore offline falls back to the cached account', () async {
+      await service.login('hendra@demo.ruangin.id', 'ruangin123');
+      backend.offline = true;
+      final a = await makeService(backend, store).restoreSession();
+      expect(a?.role, UserRole.petugas);
+    });
+
+    test('logout revokes the token on the server and forgets it', () async {
+      await service.login('nadia@demo.ruangin.id', 'ruangin123');
+      await service.logout();
+      expect(backend.calls('POST', '/auth/logout'), hasLength(1));
+      expect(TokenStore(store).token, isNull);
+      expect(await makeService(backend, store).restoreSession(), isNull);
+    });
   });
 }

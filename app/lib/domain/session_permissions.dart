@@ -1,12 +1,8 @@
 import '../data/models/account.dart';
-import '../data/models/session.dart';
 
-/// P05 rule: lecturers edit only their own sessions, officers only sessions
-/// whose prodi is within their scope, students never.
-bool canEditSession(Account account, Session session) => switch (account.role) {
-      UserRole.mahasiswa => false,
-      UserRole.dosen => account.lecturerId == session.lecturerId,
-      UserRole.petugas => account.scopeProdi.contains(session.prodi),
-    };
-
+/// Edit permission (P05) is decided by the server and exposed as
+/// `Session.canEdit`. Reporting an empty room (P09) is student-only.
 bool canReportEmptyRoom(Account account) => account.role == UserRole.mahasiswa;
+
+/// The confirmation queue (`GET /reports`) is for lecturers and officers.
+bool canReviewReports(Account account) => account.isEditor;

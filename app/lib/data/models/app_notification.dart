@@ -1,11 +1,25 @@
 import 'package:flutter/foundation.dart';
 
+import 'json.dart';
+
 enum NotificationKind {
-  /// Official change by a lecturer/officer.
+  /// Official change by a lecturer/officer (or attendance sync).
   sessionChanged,
 
   /// A student report — always labelled "belum dikonfirmasi".
   emptyRoomReport,
+
+  /// P11: an earlier session of the same lecturer today is still unconfirmed
+  /// or was reported empty. Informational only.
+  earlyWarning,
+
+  /// The signed-in student's report was confirmed or rejected.
+  reportResolved;
+
+  /// Unknown kinds (added server-side later) fall back to [sessionChanged]
+  /// instead of throwing like `byName` would.
+  static NotificationKind parse(String? raw) => NotificationKind.values
+      .firstWhere((k) => k.name == raw, orElse: () => sessionChanged);
 }
 
 @immutable
@@ -23,6 +37,8 @@ class AppNotification {
 
   final String id;
   final String recipientId;
+
+  /// Session to open when tapped; may be empty for future kinds.
   final String sessionId;
   final NotificationKind kind;
   final String title;
@@ -31,36 +47,34 @@ class AppNotification {
   final bool isRead;
 
   AppNotification markRead() => AppNotification(
-        id: id,
-        recipientId: recipientId,
-        sessionId: sessionId,
-        kind: kind,
-        title: title,
-        body: body,
-        createdAt: createdAt,
-        isRead: true,
-      );
+    id: id,
+    recipientId: recipientId,
+    sessionId: sessionId,
+    kind: kind,
+    title: title,
+    body: body,
+    createdAt: createdAt,
+    isRead: true,
+  );
 
   factory AppNotification.fromJson(Map<String, dynamic> json) =>
       AppNotification(
-        id: json['id'] as String,
-        recipientId: json['recipientId'] as String,
-        sessionId: json['sessionId'] as String,
-        kind: NotificationKind.values.byName(json['kind'] as String),
+        id: '${json['id']}',
+        recipientId: '${json['recipientId']}',
+        sessionId: json['sessionId'] as String? ?? '',
+        kind: NotificationKind.parse(json['kind'] as String?),
         title: json['title'] as String,
-        body: json['body'] as String,
-        createdAt: DateTime.parse(json['createdAt'] as String),
+        body: json['body'] as String? ?? '',
+        createdAt: parseApiDate(json['createdAt']),
         isRead: json['isRead'] as bool? ?? false,
       );
+}
 
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'recipientId': recipientId,
-        'sessionId': sessionId,
-        'kind': kind.name,
-        'title': title,
-        'body': body,
-        'createdAt': createdAt.toIso8601String(),
-        'isRead': isRead,
-      };
+/// `GET /me/notifications`: newest first + the unread badge count.
+@immutable
+class NotificationPage {
+  const NotificationPage(this.items, this.unreadCount);
+
+  final List<AppNotification> items;
+  final int unreadCount;
 }

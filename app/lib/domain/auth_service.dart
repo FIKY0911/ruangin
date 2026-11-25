@@ -1,13 +1,10 @@
 import 'package:flutter/foundation.dart';
 
-import '../core/clock.dart';
 import '../core/result.dart';
 import '../data/models/account.dart';
-import '../data/models/password_hash.dart';
+import '../data/remote/api_client.dart';
 import '../data/repositories/repositories.dart';
 import 'auth_validators.dart';
-import 'greeting.dart';
-import 'password_hasher.dart';
 
 enum AuthField { email, password, confirmPassword }
 
@@ -16,7 +13,9 @@ enum AuthErrorCode {
   emailTaken,
   accountNotFound,
   wrongPassword,
-  storage,
+
+  /// Network/server problem (message comes from the API client).
+  server,
 }
 
 /// Failure with an error code and optional per-field messages for forms.
@@ -45,106 +44,99 @@ class RegisterInput {
   final String confirmPassword;
 }
 
-/// Register / login / logout / persistent session use cases (pure Dart).
+/// Register / login / logout / persistent session use cases. Credentials are
+/// checked by the server (`/auth/*`); the same validation rules run locally
+/// first so obvious mistakes don't need a round trip.
 class AuthService {
-  AuthService({
-    required this._repo,
-    required this._hasher,
-    required this._clock,
-  });
+  AuthService({required this._repo});
 
   final AuthRepository _repo;
-  final PasswordHasher _hasher;
-  final Clock _clock;
-
-  /// Per-instance counter so two accounts created in the same microsecond
-  /// (or under a fixed test clock) never get the same id.
-  int _seq = 0;
 
   static Map<AuthField, String> validateRegister(RegisterInput input) => {
-        AuthField.email: ?AuthValidators.email(input.email),
-        AuthField.password: ?AuthValidators.password(input.password),
-        AuthField.confirmPassword: ?AuthValidators.confirmPassword(
-            input.password, input.confirmPassword),
-      };
+    AuthField.email: ?AuthValidators.email(input.email),
+    AuthField.password: ?AuthValidators.password(input.password),
+    AuthField.confirmPassword: ?AuthValidators.confirmPassword(
+      input.password,
+      input.confirmPassword,
+    ),
+  };
 
-  static Map<AuthField, String> validateLogin(String email, String password) => {
+  static Map<AuthField, String> validateLogin(String email, String password) =>
+      {
         AuthField.email: ?AuthValidators.email(email),
         AuthField.password: ?AuthValidators.loginPassword(password),
       };
 
-  /// Creates a local account (role defaults to mahasiswa). Does not sign in.
+  /// Creates a mahasiswa account on the server. Does not sign in.
   Future<Result<Account>> register(RegisterInput input) async {
     final errors = validateRegister(input);
     if (errors.isNotEmpty) {
-      return Failure(AuthFailure('Periksa kembali isian formulir.',
-          code: AuthErrorCode.invalidInput, fieldErrors: errors));
+      return Failure(
+        AuthFailure(
+          'Periksa kembali isian formulir.',
+          code: AuthErrorCode.invalidInput,
+          fieldErrors: errors,
+        ),
+      );
     }
-    final email = AuthValidators.normalizeEmail(input.email);
-    final existing = await _repo.findByEmail(email);
-    switch (existing) {
-      case Failure(:final failure):
-        return Failure(_storage(failure));
-      case Success(value: _?):
-        return const Failure(AuthFailure('Email sudah terdaftar.',
-            code: AuthErrorCode.emailTaken,
-            fieldErrors: {AuthField.email: 'Email sudah terdaftar.'}));
-      case Success():
-        break;
-    }
-    final account = Account(
-      id: 'u-${_clock.now().microsecondsSinceEpoch}-${_seq++}',
-      name: greetingNameFromEmail(email),
-      email: email,
-      role: UserRole.mahasiswa,
-      subtitle: 'Mahasiswa',
+    final result = await _repo.register(
+      email: AuthValidators.normalizeEmail(input.email),
+      password: input.password,
+      confirmPassword: input.confirmPassword,
     );
-    final created =
-        await _repo.create(AuthRecord(account, _hasher.hash(input.password)));
-    return switch (created) {
-      Success() => Success(account),
-      Failure(:final failure) => Failure(_storage(failure)),
-    };
+    return _mapFailure(result);
   }
 
-  /// Verifies credentials and persists the session.
+  /// Verifies credentials on the server and persists the token.
   Future<Result<Account>> login(String email, String password) async {
     final errors = validateLogin(email, password);
     if (errors.isNotEmpty) {
-      return Failure(AuthFailure('Periksa kembali isian formulir.',
-          code: AuthErrorCode.invalidInput, fieldErrors: errors));
+      return Failure(
+        AuthFailure(
+          'Periksa kembali isian formulir.',
+          code: AuthErrorCode.invalidInput,
+          fieldErrors: errors,
+        ),
+      );
     }
-    final found = await _repo.findByEmail(AuthValidators.normalizeEmail(email));
-    final AuthRecord record;
-    switch (found) {
-      case Failure(:final failure):
-        return Failure(_storage(failure));
-      case Success(value: null):
-        return const Failure(AuthFailure(
-            'Akun tidak ditemukan. Periksa email atau daftar akun baru.',
-            code: AuthErrorCode.accountNotFound,
-            fieldErrors: {AuthField.email: 'Akun tidak ditemukan.'}));
-      case Success(value: final r?):
-        record = r;
-    }
-    if (!_hasher.verify(password, record.password)) {
-      return const Failure(AuthFailure('Password salah.',
-          code: AuthErrorCode.wrongPassword,
-          fieldErrors: {AuthField.password: 'Password salah.'}));
-    }
-    final saved = await _repo.saveSession(record.account.id);
-    return switch (saved) {
-      Success() => Success(record.account),
-      Failure(:final failure) => Failure(_storage(failure)),
-    };
+    return _mapFailure(
+      await _repo.login(AuthValidators.normalizeEmail(email), password),
+    );
   }
 
-  /// Returns the persisted signed-in account, if any.
+  /// Returns the signed-in account (validated with `/auth/me`), if any.
   Future<Account?> restoreSession() async =>
-      (await _repo.currentAccount()).valueOrNull;
+      (await _repo.restore()).valueOrNull;
 
-  Future<void> logout() => _repo.clearSession();
+  /// Re-reads the account from the server (points, role).
+  Future<Result<Account>> refreshAccount() => _repo.me();
 
-  AuthFailure _storage(AppFailure f) =>
-      AuthFailure(f.message, code: AuthErrorCode.storage, cause: f.cause);
+  Future<void> logout() => _repo.logout();
+
+  static Result<Account> _mapFailure(Result<Account> r) => switch (r) {
+    Success() => r,
+    Failure(failure: final ApiFailure f) => Failure(fromApi(f)),
+    Failure(:final failure) => Failure(
+      AuthFailure(
+        failure.message,
+        code: AuthErrorCode.server,
+        cause: failure.cause,
+      ),
+    ),
+  };
+
+  /// Maps the server's `{message, code, errors}` to form errors.
+  static AuthFailure fromApi(ApiFailure f) {
+    final code = switch (f.code) {
+      'invalidInput' => AuthErrorCode.invalidInput,
+      'emailTaken' => AuthErrorCode.emailTaken,
+      'accountNotFound' => AuthErrorCode.accountNotFound,
+      'wrongPassword' => AuthErrorCode.wrongPassword,
+      _ => AuthErrorCode.server,
+    };
+    final fields = <AuthField, String>{
+      for (final field in AuthField.values) field: ?f.fieldErrors[field.name],
+    };
+    return AuthFailure(f.message, code: code, fieldErrors: fields, cause: f);
+  }
 }

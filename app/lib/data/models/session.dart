@@ -1,7 +1,11 @@
 import 'package:flutter/foundation.dart';
 
-/// Display status of a session. Derived, never stored directly, so the rule
-/// "no attendance record => Belum terkonfirmasi, never Batal" holds everywhere.
+import 'empty_room_report.dart';
+import 'json.dart';
+import 'lecturer.dart';
+
+/// Display status of a session. Computed by the server with the same rule as
+/// [Session.status]: "no attendance record => Belum terkonfirmasi, never Batal".
 enum SessionStatus { tercatat, belumTerkonfirmasi, batal }
 
 @immutable
@@ -13,14 +17,9 @@ class AttendanceRecord {
 
   factory AttendanceRecord.fromJson(Map<String, dynamic> json) =>
       AttendanceRecord(
-        recordedAt: DateTime.parse(json['recordedAt'] as String),
-        source: json['source'] as String,
+        recordedAt: parseApiDate(json['recordedAt']),
+        source: json['source'] as String? ?? '',
       );
-
-  Map<String, dynamic> toJson() => {
-        'recordedAt': recordedAt.toIso8601String(),
-        'source': source,
-      };
 }
 
 @immutable
@@ -36,16 +35,10 @@ class ChangeEntry {
   final String description;
 
   factory ChangeEntry.fromJson(Map<String, dynamic> json) => ChangeEntry(
-        at: DateTime.parse(json['at'] as String),
-        actor: json['actor'] as String,
-        description: json['description'] as String,
-      );
-
-  Map<String, dynamic> toJson() => {
-        'at': at.toIso8601String(),
-        'actor': actor,
-        'description': description,
-      };
+    at: parseApiDate(json['at']),
+    actor: json['actor'] as String? ?? '',
+    description: json['description'] as String,
+  );
 }
 
 @immutable
@@ -63,6 +56,12 @@ class Session {
     this.isCancelled = false,
     this.attendance,
     this.history = const [],
+    this.version = 0,
+    this.canEdit = false,
+    this.isFollowed = false,
+    this.lecturer,
+    this.pendingReportCount,
+    this.myReport,
   });
 
   final String id;
@@ -81,8 +80,22 @@ class Session {
   final bool isCancelled;
   final AttendanceRecord? attendance;
 
-  /// Oldest first.
+  /// Oldest first. Only present on the detail endpoint.
   final List<ChangeEntry> history;
+
+  /// Optimistic-locking version; every edit must send it back (409 if stale).
+  final int version;
+
+  /// Server-side permission for the signed-in user (P05).
+  final bool canEdit;
+  final bool isFollowed;
+  final Lecturer? lecturer;
+
+  /// Pending empty-room reports (list + detail endpoints).
+  final int? pendingReportCount;
+
+  /// The signed-in student's own report on this session (detail only).
+  final EmptyRoomReport? myReport;
 
   SessionStatus get status {
     if (isCancelled) return SessionStatus.batal;
@@ -90,63 +103,73 @@ class Session {
     return SessionStatus.belumTerkonfirmasi;
   }
 
-
-  Session copyWith({
-    DateTime? start,
-    DateTime? end,
-    String? room,
-    String? source,
-    DateTime? updatedAt,
-    bool? isCancelled,
-    AttendanceRecord? attendance,
-    List<ChangeEntry>? history,
-  }) =>
-      Session(
-        id: id,
-        lecturerId: lecturerId,
-        courseName: courseName,
-        prodi: prodi,
-        start: start ?? this.start,
-        end: end ?? this.end,
-        room: room ?? this.room,
-        source: source ?? this.source,
-        updatedAt: updatedAt ?? this.updatedAt,
-        isCancelled: isCancelled ?? this.isCancelled,
-        attendance: attendance ?? this.attendance,
-        history: history ?? this.history,
-      );
-
   factory Session.fromJson(Map<String, dynamic> json) => Session(
-        id: json['id'] as String,
-        lecturerId: json['lecturerId'] as String,
-        courseName: json['courseName'] as String,
-        prodi: json['prodi'] as String,
-        start: DateTime.parse(json['start'] as String),
-        end: DateTime.parse(json['end'] as String),
-        room: json['room'] as String,
-        source: json['source'] as String,
-        updatedAt: DateTime.parse(json['updatedAt'] as String),
-        isCancelled: json['isCancelled'] as bool? ?? false,
-        attendance: json['attendance'] == null
-            ? null
-            : AttendanceRecord.fromJson(
-                json['attendance'] as Map<String, dynamic>),
-        history: List.unmodifiable((json['history'] as List<dynamic>? ?? [])
-            .map((e) => ChangeEntry.fromJson(e as Map<String, dynamic>))),
-      );
+    id: json['id'] as String,
+    lecturerId: json['lecturerId'] as String,
+    courseName: json['courseName'] as String,
+    prodi: json['prodi'] as String,
+    start: parseApiDate(json['start']),
+    end: parseApiDate(json['end']),
+    room: json['room'] as String,
+    source: json['source'] as String? ?? '',
+    updatedAt: parseApiDate(json['updatedAt']),
+    isCancelled: json['isCancelled'] as bool? ?? false,
+    attendance: json['attendance'] is Map<String, dynamic>
+        ? AttendanceRecord.fromJson(json['attendance'] as Map<String, dynamic>)
+        : null,
+    history: List.unmodifiable(
+      (json['history'] as List<dynamic>? ?? []).map(
+        (e) => ChangeEntry.fromJson(e as Map<String, dynamic>),
+      ),
+    ),
+    version: (json['version'] as num?)?.toInt() ?? 0,
+    canEdit: json['canEdit'] as bool? ?? false,
+    isFollowed: json['isFollowed'] as bool? ?? false,
+    lecturer: json['lecturer'] is Map<String, dynamic>
+        ? Lecturer.fromJson(json['lecturer'] as Map<String, dynamic>)
+        : null,
+    pendingReportCount: (json['pendingReportCount'] as num?)?.toInt(),
+    myReport: json['myReport'] is Map<String, dynamic>
+        ? EmptyRoomReport.fromJson(json['myReport'] as Map<String, dynamic>)
+        : null,
+  );
+}
 
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'lecturerId': lecturerId,
-        'courseName': courseName,
-        'prodi': prodi,
-        'start': start.toIso8601String(),
-        'end': end.toIso8601String(),
-        'room': room,
-        'source': source,
-        'updatedAt': updatedAt.toIso8601String(),
-        'isCancelled': isCancelled,
-        'attendance': attendance?.toJson(),
-        'history': history.map((e) => e.toJson()).toList(),
-      };
+/// `GET /me/today`: followed sessions today + badge/points for Beranda.
+@immutable
+class TodaySummary {
+  const TodaySummary({
+    required this.sessions,
+    required this.nextSessionId,
+    required this.unreadCount,
+    required this.points,
+  });
+
+  final List<Session> sessions;
+  final String? nextSessionId;
+  final int unreadCount;
+  final int points;
+}
+
+/// P12 `GET /sessions/{id}/message-draft`: a polite message the student copies.
+@immutable
+class MessageDraft {
+  const MessageDraft({
+    required this.text,
+    required this.proposedTime,
+    required this.proposedPlace,
+    required this.note,
+  });
+
+  final String text;
+  final DateTime proposedTime;
+  final String proposedPlace;
+  final String note;
+
+  factory MessageDraft.fromJson(Map<String, dynamic> json) => MessageDraft(
+    text: json['text'] as String,
+    proposedTime: parseApiDate(json['proposedTime']),
+    proposedPlace: json['proposedPlace'] as String? ?? '',
+    note: json['note'] as String? ?? '',
+  );
 }

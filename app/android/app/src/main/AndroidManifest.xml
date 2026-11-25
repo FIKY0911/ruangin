@@ -1,5 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Needed to reach the Ruangin API (backend/) in every build type. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Demo backend runs on plain http (php artisan serve). Use https and
+         remove this for production. -->
     <application
+        android:usesCleartextTraffic="true"
         android:label="Ruangin"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">

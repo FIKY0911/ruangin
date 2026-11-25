@@ -1,8 +1,25 @@
 import 'package:flutter/foundation.dart';
 
-/// A student's "ruang kosong" report. It is informational only and never
-/// changes the session status until confirmed by a lecturer/officer
-/// (confirmation is out of scope for M1).
+import 'json.dart';
+import 'session.dart';
+
+enum ReportStatus {
+  pending('Belum dikonfirmasi'),
+  confirmed('Dikonfirmasi'),
+  rejected('Ditolak');
+
+  const ReportStatus(this.label);
+  final String label;
+
+  static ReportStatus parse(String? raw) => ReportStatus.values.firstWhere(
+    (s) => s.name == raw,
+    orElse: () => pending,
+  );
+}
+
+/// A student's "ruang kosong" report (P09). It never changes the session
+/// status until a lecturer/officer confirms it; a confirmed report cancels
+/// the session and awards points to the reporters (P10).
 @immutable
 class EmptyRoomReport {
   const EmptyRoomReport({
@@ -10,27 +27,41 @@ class EmptyRoomReport {
     required this.sessionId,
     required this.reporterId,
     required this.createdAt,
+    this.status = ReportStatus.pending,
+    this.resolvedAt,
+    this.pointsAwarded = 0,
+    this.session,
+    this.reporterName,
   });
 
   final String id;
   final String sessionId;
   final String reporterId;
   final DateTime createdAt;
+  final ReportStatus status;
+  final DateTime? resolvedAt;
+  final int pointsAwarded;
+
+  /// Included in the confirmation queue (`GET /reports`).
+  final Session? session;
+  final String? reporterName;
+
+  bool get isPending => status == ReportStatus.pending;
 
   static const confirmationLabel = 'belum dikonfirmasi';
 
   factory EmptyRoomReport.fromJson(Map<String, dynamic> json) =>
       EmptyRoomReport(
-        id: json['id'] as String,
+        id: '${json['id']}',
         sessionId: json['sessionId'] as String,
-        reporterId: json['reporterId'] as String,
-        createdAt: DateTime.parse(json['createdAt'] as String),
+        reporterId: '${json['reporterId']}',
+        createdAt: parseApiDate(json['createdAt']),
+        status: ReportStatus.parse(json['status'] as String?),
+        resolvedAt: parseApiDateOrNull(json['resolvedAt']),
+        pointsAwarded: (json['pointsAwarded'] as num?)?.toInt() ?? 0,
+        session: json['session'] is Map<String, dynamic>
+            ? Session.fromJson(json['session'] as Map<String, dynamic>)
+            : null,
+        reporterName: json['reporterName'] as String?,
       );
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'sessionId': sessionId,
-        'reporterId': reporterId,
-        'createdAt': createdAt.toIso8601String(),
-      };
 }

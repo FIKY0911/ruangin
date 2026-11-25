@@ -40,7 +40,7 @@ Aplikasi ini menampilkan timeline jadwal mengajar per dosen yang tersinkronisasi
 - ✅ Melaporkan ruangan kosong untuk mahasiswa lain
 - ✅ Mendapat peringatan dini jika ada perubahan
 
-**Status Produk**: Milestone 1 (M1) - Demo dengan data sintetis lokal
+**Status Produk**: App Flutter (`app/`) terhubung ke API Laravel (`backend/`); data demo sintetis di server
 
 ---
 
@@ -70,7 +70,7 @@ Aplikasi ini menampilkan timeline jadwal mengajar per dosen yang tersinkronisasi
 - **Storage**: SharedPreferences 2.5.6+
 - **Utilities**:
   - `intl`: Internationalization & date formatting
-  - `crypto`: Password hashing (bcrypt)
+  - `http`: Klien REST ke API Laravel (`backend/`)
   - `cupertino_icons`: iOS-style icons
 
 ### Development
@@ -153,9 +153,31 @@ flutter doctor -v
 
 ## ⚙️ Konfigurasi
 
-### Konfigurasi Dasar
+### Konfigurasi Dasar: hubungkan app ke backend
 
-Tidak ada konfigurasi khusus yang diperlukan untuk menjalankan aplikasi dalam mode development dengan data lokal. Semua konfigurasi sudah tersedia di dalam kode.
+Semua data (akun, jadwal, ikuti sesi, notifikasi, laporan, poin) datang dari API Laravel di `backend/`.
+Jalankan backend dulu (detail: [`backend/README.md`](backend/README.md)):
+
+```bash
+cd backend
+composer install
+cp .env.example .env            # isi DB_USERNAME / DB_PASSWORD
+php artisan key:generate
+php artisan migrate --seed
+php artisan serve --host=0.0.0.0 --port=8000
+```
+
+Lalu arahkan app ke server dengan `--dart-define=API_BASE_URL=...` (default `http://10.0.2.2:8000/api`, yaitu laptop dilihat dari emulator Android):
+
+| App berjalan di | Perintah |
+|---|---|
+| Emulator Android | `flutter run` |
+| HP fisik (WiFi sama) | `flutter run --dart-define=API_BASE_URL=http://<IP-laptop>:8000/api` |
+| Chrome (Flutter web) | `flutter run -d chrome --dart-define=API_BASE_URL=http://127.0.0.1:8000/api` |
+
+Akun demo (password `ruangin123`): `nadia@demo.ruangin.id`, `raka@demo.ruangin.id` (mahasiswa),
+`rina@demo.ruangin.id` (dosen), `hendra@demo.ruangin.id` (petugas). Reset data di hari demo:
+`php artisan ruangin:reset-demo --force` (atau dari Profil → Panel demo sebagai petugas).
 
 ### Konfigurasi Android (Android Studio / Android SDK)
 
@@ -178,23 +200,11 @@ Tidak ada konfigurasi khusus yang diperlukan untuk menjalankan aplikasi dalam mo
 
 Aplikasi ini fokus pada Android untuk M1. iOS support bisa ditambahkan di fase development selanjutnya.
 
-### Environment Variables (Opsional)
+### Environment Variables
 
-Jika ada API atau configuration khusus, tambahkan file `.env` di folder `app/`:
-
-```bash
-# app/.env
-API_BASE_URL=http://localhost:3000
-API_TIMEOUT=30
-DEBUG_MODE=true
-```
-
-Kemudian load di `lib/main.dart`:
-
-```dart
-import 'dart:async';
-// Load environment variables jika ada integration dengan backend
-```
+App tidak memakai file `.env`. Satu-satunya konfigurasi adalah `API_BASE_URL` lewat
+`--dart-define` (lihat di atas; nilai default ada di `app/lib/core/api_config.dart`).
+Android memakai `usesCleartextTraffic="true"` karena server demo berjalan di `http`.
 
 ---
 
@@ -203,8 +213,11 @@ import 'dart:async';
 ### Mode Development
 
 ```bash
-# Jalankan di emulator/device yang sudah connect
+# Jalankan di emulator (backend harus sudah jalan, lihat Konfigurasi)
 flutter run
+
+# HP fisik / server lain
+flutter run --dart-define=API_BASE_URL=http://192.168.1.10:8000/api
 
 # Jalankan dengan output verbose (untuk debugging)
 flutter run -v
@@ -258,19 +271,19 @@ flutter test -v
 
 ### Test Files
 
-Aplikasi sudah dilengkapi dengan 54 test files yang mencakup:
+Test memakai `MockClient` (package `http`) dengan backend palsu di `test/fake_backend.dart`,
+jadi tidak butuh server:
 
 | Test File | Cakupan |
 |-----------|---------|
-| `auth_service_test.dart` | Authentication logic & session management |
-| `auth_validators_test.dart` | Input validation untuk login/register |
-| `auth_controllers_test.dart` | Auth UI controller logic |
-| `password_hasher_test.dart` | Password hashing & verification |
-| `session_service_test.dart` | Session state & permissions |
-| `search_test.dart` | Dosen search functionality |
-| `timeline_test.dart` | Timeline & schedule logic |
-| `follow_test.dart` | Follow/unfollow session logic |
-| `auth_flow_widget_test.dart` | Auth UI integration |
+| `api_client_test.dart` | Header, token Bearer, format error `{message, code, errors}`, 401/409, parsing tanggal `+07:00` |
+| `auth_service_test.dart` | Register/login/me/logout lewat API, restore sesi, mode offline |
+| `auth_validators_test.dart` | Validasi form login/register |
+| `auth_controllers_test.dart` | Controller form + sesi kedaluwarsa |
+| `schedule_test.dart` | Cari dosen, timeline, ikuti, edit dengan `version`, laporan + poin, notifikasi, usulan pesan |
+| `auth_flow_widget_test.dart` | Alur Welcome → Register → Login → Beranda → Keluar |
+| `features_widget_test.dart` | Layar mahasiswa, dosen, petugas (antrian laporan, panel demo, 409) |
+| `e2e_api_test.dart` | Opsional, ke backend sungguhan: `RUANGIN_E2E_URL=http://127.0.0.1:8000/api flutter test test/e2e_api_test.dart` |
 
 ### Menjalankan Widget Tests
 

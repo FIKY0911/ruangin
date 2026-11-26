@@ -1,24 +1,22 @@
 # Ruangin
 
-Aplikasi Android (Flutter) untuk melihat jadwal mengajar dosen lintas prodi, lengkap dengan
-status sesi (tercatat / belum terkonfirmasi / batal), ruang terbaru, dan notifikasi perubahan.
-Backend-nya API Laravel. Data yang dipakai saat ini adalah data demo sintetis.
+Ruangin adalah aplikasi Android untuk melihat jadwal dosen. Mahasiswa bisa tahu dosen mengajar di ruang mana dan jam berapa. Kalau ada perubahan, aplikasi akan memberi tahu.
 
-```
-RuangIn/
-├── app/        Aplikasi Flutter (Android)   → detail: app/README.md
-├── backend/    API Laravel + MySQL          → detail: backend/README.md
-└── docs/       PRD dan desain referensi
-```
+Aplikasi ini terdiri dari dua bagian:
 
-## Prasyarat
+- **app/**: aplikasi Android (Flutter)
+- **backend/**: server (Laravel) dan database (MySQL)
 
-| Untuk | Yang dibutuhkan |
+Ada juga **docs/** berisi dokumen produk dan desain.
+
+## Yang perlu disiapkan
+
+| Bagian | Yang perlu ada |
 |---|---|
-| App | Flutter dengan Dart SDK `^3.13.5` (sesuai `app/pubspec.yaml`), Android SDK, dan emulator atau HP Android |
-| Backend | PHP 8.2+ (dengan ekstensi `pdo_mysql`, `mbstring`, `xml`, `curl`, `zip`), Composer 2, MySQL 8 |
+| Aplikasi | Flutter, Android SDK, dan emulator atau HP Android |
+| Server | PHP 8.2 atau lebih baru, Composer, dan MySQL 8 |
 
-Cek setup:
+Untuk cek apakah sudah siap, jalankan:
 
 ```bash
 flutter doctor -v
@@ -26,150 +24,155 @@ php -v
 composer -V
 ```
 
-## Instalasi
+## Cara instalasi
+
+Download proyeknya dulu:
 
 ```bash
 git clone https://github.com/FIKY0911/ruangin.git
 cd ruangin
 ```
 
-### 1. Backend
+### 1. Siapkan server
 
 ```bash
 cd backend
 composer install
-cp .env.example .env          # isi DB_USERNAME dan DB_PASSWORD sesuai MySQL Anda
+cp .env.example .env
 php artisan key:generate
 ```
 
-Buat dua database kosong di MySQL, `ruangin` untuk aplikasi dan `ruangin_test` untuk test
-(bisa lewat DBeaver, phpMyAdmin, atau HeidiSQL):
+Buka file `.env`, lalu isi `DB_USERNAME` dan `DB_PASSWORD` dengan user MySQL Anda.
+
+Buat dua database kosong di MySQL. Anda bisa pakai DBeaver, phpMyAdmin, atau HeidiSQL:
 
 ```sql
 CREATE DATABASE IF NOT EXISTS ruangin      CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS ruangin_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-Lalu isi tabel dan data demo:
+- `ruangin` dipakai aplikasi.
+- `ruangin_test` dipakai untuk test.
+
+Lalu isi database dengan data contoh:
 
 ```bash
 php artisan migrate --seed
 ```
 
-### 2. Aplikasi Flutter
+### 2. Siapkan aplikasi
 
 ```bash
 cd ../app
 flutter pub get
 ```
 
-## Konfigurasi
+## Cara mengatur alamat server
 
-Satu-satunya pengaturan app adalah alamat backend, lewat `--dart-define=API_BASE_URL=...`.
-Nilai default-nya `http://10.0.2.2:8000/api`, yaitu alamat laptop dari sudut pandang emulator
-Android (lihat `app/lib/core/api_config.dart`). App tidak membaca file `.env`.
+Aplikasi perlu tahu alamat server. Alamat ini diatur saat menjalankan aplikasi, lewat `--dart-define`.
 
-| App berjalan di | Perintah |
+Kalau tidak diatur, aplikasi memakai `http://10.0.2.2:8000/api`. Alamat ini berarti laptop Anda, dilihat dari emulator Android.
+
+| Aplikasi dijalankan di | Perintah |
 |---|---|
 | Emulator Android | `flutter run` |
-| HP fisik (WiFi sama dengan laptop) | `flutter run --dart-define=API_BASE_URL=http://<IP-laptop>:8000/api` |
-| Chrome | `flutter run -d chrome --dart-define=API_BASE_URL=http://127.0.0.1:8000/api` |
+| HP sendiri (satu WiFi dengan laptop) | `flutter run --dart-define=API_BASE_URL=http://<IP-laptop>:8000/api` |
+| Browser Chrome | `flutter run -d chrome --dart-define=API_BASE_URL=http://127.0.0.1:8000/api` |
 
-Untuk HP fisik atau emulator, backend harus dijalankan dengan `--host=0.0.0.0`
-(lihat langkah di bawah). Android mengizinkan `http` karena `usesCleartextTraffic="true"`.
+Ganti `<IP-laptop>` dengan alamat IP laptop Anda. Cek alamatnya dengan `ip addr` (Linux) atau `ipconfig` (Windows).
 
-Set zona waktu emulator ke Asia/Jakarta supaya jam sesi sama dengan jadwal kampus.
+Di emulator, atur zona waktu ke Asia/Jakarta supaya jamnya sama dengan jadwal kampus.
 
-## Menjalankan
+## Cara menjalankan
 
-Urutannya: backend dulu, lalu app.
+Nyalakan server dulu, baru aplikasinya.
 
 ```bash
-# Terminal 1: backend
+# Terminal 1: server
 cd backend
 php artisan serve --host=0.0.0.0 --port=8000
+```
 
-# Terminal 2: app
+```bash
+# Terminal 2: aplikasi
 cd app
-flutter devices               # pastikan emulator atau HP terdeteksi
+flutter devices
 flutter run
 ```
 
-Opsional, jadwal peringatan dini (P11) butuh scheduler saat pengembangan:
+`flutter devices` menampilkan daftar perangkat yang terdeteksi. Pastikan emulator atau HP Anda ada di daftar itu.
+
+Kalau ingin peringatan dini berjalan otomatis saat pengembangan:
 
 ```bash
 cd backend
 php artisan schedule:work
 ```
 
-### Akun demo
+### Akun untuk mencoba
 
-Password semua akun: `ruangin123`
+Semua akun memakai password `ruangin123`.
 
 | Email | Peran |
 |---|---|
-| `nadia@demo.ruangin.id` | mahasiswa (Manajemen) |
-| `raka@demo.ruangin.id` | mahasiswa (Akuntansi) |
-| `rina@demo.ruangin.id` | dosen (`l-rina`) |
-| `hendra@demo.ruangin.id` | petugas (scope Teknik Informatika dan Sistem Informasi) |
+| `nadia@demo.ruangin.id` | Mahasiswa |
+| `raka@demo.ruangin.id` | Mahasiswa |
+| `rina@demo.ruangin.id` | Dosen |
+| `hendra@demo.ruangin.id` | Petugas |
 
-Mengisi ulang data demo, misalnya di hari demo:
+Kalau data sudah berantakan dan ingin mengembalikannya seperti awal:
 
 ```bash
 cd backend
 php artisan ruangin:reset-demo --force
 ```
 
-Akun yang dibuat lewat Daftar selalu berperan sebagai mahasiswa.
+Akun yang dibuat sendiri lewat menu Daftar otomatis menjadi mahasiswa.
 
-## Test
+## Menjalankan test
 
 ```bash
-# Backend (memakai database ruangin_test)
+# Test server (pakai database ruangin_test)
 cd backend
 php artisan test
 
-# App (memakai MockClient, tidak butuh server)
+# Test aplikasi (tidak perlu server)
 cd app
 flutter analyze
 flutter test
 ```
 
-Test end-to-end app ke backend sungguhan opsional dan mengubah data, jadi jalankan hanya
-di database uji:
+Ada juga test yang menguji aplikasi langsung ke server sungguhan. Test ini mengubah data, jadi hanya jalankan di database test:
 
 ```bash
 RUANGIN_E2E_URL=http://127.0.0.1:8000/api flutter test test/e2e_api_test.dart
 ```
 
-## Build APK
+## Membuat file APK
 
 ```bash
 cd app
 flutter build apk --dart-define=API_BASE_URL=http://<IP-server>:8000/api
 ```
 
-Hasilnya ada di `app/build/app/outputs/flutter-apk/app-release.apk`. Build ini masih
-ditandatangani dengan kunci debug. Untuk Google Play, siapkan keystore sendiri sesuai
-[panduan Flutter](https://docs.flutter.dev/deployment/android).
+File APK akan ada di `app/build/app/outputs/flutter-apk/app-release.apk`.
 
-## Masalah umum
+APK ini masih memakai kunci debug. Untuk dibagikan ke Google Play, buat kunci sendiri. Panduannya ada di [dokumentasi Flutter](https://docs.flutter.dev/deployment/android).
 
-| Gejala | Penyebab dan solusi |
+## Kalau ada masalah
+
+| Yang terjadi | Cara mengatasi |
 |---|---|
-| `No supported devices found` | Emulator belum jalan. Jalankan lewat `flutter emulators --launch <nama>` atau Device Manager di Android Studio. |
-| Emulator mati atau `Lost connection to device` | Memori laptop habis. Jalankan emulator dengan `-memory 1536`, dan tutup aplikasi berat lain. |
-| Login gagal: tidak bisa terhubung ke server | Backend belum jalan, atau belum `--host=0.0.0.0`. Cek juga firewall port 8000. |
-| `Unknown database 'ruangin'` | Database belum dibuat. Jalankan SQL di bagian Backend. |
-| `flutter pub get` gagal | `flutter clean`, lalu ulangi `flutter pub get` di folder `app/`. |
+| `No supported devices found` | Emulator belum menyala. Nyalakan dulu dari Android Studio, atau jalankan `flutter emulators --launch <nama>`. |
+| Emulator mati sendiri | Memori laptop kurang. Jalankan emulator dengan `-memory 1536`, lalu tutup aplikasi lain yang berat. |
+| Login gagal, muncul "tidak bisa terhubung ke server" | Server belum menyala, atau belum memakai `--host=0.0.0.0`. Cek juga firewall di port 8000. |
+| `Unknown database 'ruangin'` | Database `ruangin` belum dibuat. Ulangi langkah membuat database. |
+| `flutter pub get` gagal | Jalankan `flutter clean`, lalu `flutter pub get` lagi di folder `app/`. |
 
-## Struktur dan dokumen
+## Dokumen lain
 
-- [`app/README.md`](app/README.md): arsitektur app, daftar layar, dan endpoint yang dipakai.
-- [`backend/README.md`](backend/README.md): daftar endpoint, format error, dan aturan bisnis.
-- [`docs/PRD-Ruangin.md`](docs/PRD-Ruangin.md): requirement produk.
+- [`app/README.md`](app/README.md): penjelasan aplikasi, daftar layar, dan koneksi ke server.
+- [`backend/README.md`](backend/README.md): daftar alamat API dan aturan bisnis.
+- [`docs/PRD-Ruangin.md`](docs/PRD-Ruangin.md): dokumen kebutuhan produk.
 
-## Lisensi dan tim
-
-Proyek ini dibuat untuk STACK 2026 (GDGoC ITB), Case 1: Smarter Campus and Learning,
-oleh tim Kopdes Di Tengah Laut.
+Proyek ini dibuat untuk STACK 2026 (GDGoC ITB), Case 1: Smarter Campus and Learning, oleh tim Kopdes Di Tengah Laut.

@@ -7,20 +7,43 @@ Semua data seed **sintetis** (sama dengan `app/lib/data/fixtures/seed_data.dart`
 - Stack: Laravel 12, PHP 8.2+, MySQL 8, Laravel Sanctum (Bearer token)
 - Zona waktu: `Asia/Jakarta`. Semua tanggal dikirim sebagai ISO-8601 dengan offset, mis. `2026-11-23T07:30:00+07:00`
 
-## Setup (Laragon)
+## Cara memasang server
 
-```bash
-cd backend
-composer install
-cp .env.example .env          # isi DB_USERNAME / DB_PASSWORD
-php artisan key:generate
-# buat database `ruangin` (HeidiSQL / phpMyAdmin), lalu:
-php artisan migrate --seed
-php artisan serve --host=0.0.0.0 --port=8000
-```
+Yang perlu ada: PHP 8.2 atau lebih baru, Composer, dan MySQL 8.
 
-- `--host=0.0.0.0` supaya bisa diakses dari emulator Android (`http://10.0.2.2:8000/api`) atau HP di WiFi yang sama (`http://<IP-laptop>:8000/api`).
-- Isi `RUANGIN_SYNC_KEY` di `.env` dengan string acak kalau mau memakai endpoint sinkron absensi dengan header kunci.
+1. Masuk ke folder `backend` dan pasang paket PHP:
+
+   ```bash
+   cd backend
+   composer install
+   ```
+
+2. Buat file pengaturan dari contoh:
+
+   ```bash
+   cp .env.example .env
+   php artisan key:generate
+   ```
+
+3. Buka `.env`, lalu isi `DB_USERNAME` dan `DB_PASSWORD` dengan user MySQL Anda.
+
+4. Buat dua database kosong di MySQL: `ruangin` (untuk aplikasi) dan `ruangin_test` (untuk test).
+
+5. Isi database dengan data contoh:
+
+   ```bash
+   php artisan migrate --seed
+   ```
+
+6. Nyalakan server:
+
+   ```bash
+   php artisan serve --host=0.0.0.0 --port=8000
+   ```
+
+Keterangan:
+- `--host=0.0.0.0` membuat server bisa diakses dari emulator Android dan dari HP di WiFi yang sama.
+- `RUANGIN_SYNC_KEY` di `.env` boleh diisi string acak. Ini hanya dipakai kalau ingin memanggil endpoint sinkron absensi dengan kunci.
 
 ### Data demo
 
@@ -50,7 +73,7 @@ php artisan ruangin:early-warnings # atau jalankan manual sekali
 
 ### Test
 
-Test memakai database terpisah `ruangin_test` (lihat `phpunit.xml`), jadi buat database itu dulu.
+Test memakai database `ruangin_test` (lihat `phpunit.xml`). Pastikan database itu sudah dibuat.
 
 ```bash
 php artisan test

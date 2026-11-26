@@ -1,102 +1,103 @@
-# Ruangin — aplikasi Android (Flutter)
+# Ruangin: aplikasi Android (Flutter)
 
-App terhubung ke API Laravel di `../backend` (Sanctum, Bearer token). Semua data —
-akun & role, dosen, timeline, detail sesi, ikuti sesi, notifikasi, laporan ruang
-kosong, poin — datang dari server. Tidak ada lagi data/fixture lokal atau hashing
-password di app.
+Aplikasi ini mengambil semua datanya dari server Laravel di folder `../backend`. Data akun, dosen, jadwal, sesi, notifikasi, laporan, dan poin semuanya dari server. Tidak ada data contoh di dalam aplikasi.
 
-## Menghubungkan ke backend
+## Langkah 1: nyalakan server
 
-1. Jalankan backend (lihat `../backend/README.md`):
+Ikuti panduan di [`../backend/README.md`](../backend/README.md). Intinya:
 
-   ```sh
-   cd ../backend
-   composer install && cp .env.example .env && php artisan key:generate
-   php artisan migrate --seed
-   php artisan serve --host=0.0.0.0 --port=8000
-   ```
-
-2. Jalankan app. Base URL default `http://10.0.2.2:8000/api` (laptop dilihat dari
-   emulator Android). Ganti dengan `--dart-define`:
-
-   | App berjalan di | Perintah |
-   |---|---|
-   | Emulator Android | `flutter run` |
-   | HP fisik (WiFi sama) | `flutter run --dart-define=API_BASE_URL=http://<IP-laptop>:8000/api` |
-   | Chrome | `flutter run -d chrome --dart-define=API_BASE_URL=http://127.0.0.1:8000/api` |
-   | Build APK | `flutter build apk --dart-define=API_BASE_URL=http://<IP-laptop>:8000/api` |
-
-   Alamat server yang dipakai terlihat di **Profil → Server**. Android memakai
-   `usesCleartextTraffic="true"` karena server demo memakai `http` (hapus untuk produksi).
-   Jam ditampilkan dalam zona waktu perangkat; set emulator ke Asia/Jakarta agar sama
-   dengan jadwal kampus.
-
-Akun demo (password `ruangin123`): `nadia@demo.ruangin.id`, `raka@demo.ruangin.id`
-(mahasiswa), `rina@demo.ruangin.id` (dosen), `hendra@demo.ruangin.id` (petugas).
-Akun hasil Daftar selalu ber-role mahasiswa (ditentukan server).
-
-## Layar
-
-Navigasi bawah mengikuti `../image/ui-ux/`: **Beranda · Jadwal · Laporan · Profil**.
-
-| Layar | Referensi | Endpoint |
-|---|---|---|
-| Beranda: cari, lonceng notifikasi, "Sesi hari ini" | `beranda.png` | mahasiswa `GET /me/today`; dosen/petugas `GET /sessions?editable=1` |
-| Cari dosen + hasil kosong | `Hasil_Pencarian.png`, `Hasil_Pencarian_Tidak_Ada.png` | `GET /lecturers?q=` |
-| Profil dosen + pilih hari + timeline | `profil.png` | `GET /lecturers/{id}`, `/lecturers/{id}/timeline?date=` |
-| Detail sesi: status, riwayat, ikuti, lapor kosong, usulan pesan, ubah | — (tema yang ada) | `GET /sessions/{id}`, `PUT/DELETE /sessions/{id}/follow`, `POST /sessions/{id}/reports`, `GET /sessions/{id}/message-draft` |
-| Ubah sesi (ruang, jam, batal, catat hadir) | — | `POST /sessions/{id}/room`, `/time`, `/cancel`, `/attendance` (+`version`) |
-| Jadwal: Diikuti (+ Kelola untuk dosen/petugas) | gaya `profil.png` | `GET /me/follows`, `GET /sessions?date=&editable=1` |
-| Laporan (dosen/petugas): antrian konfirmasi | kartu `Hasil_Pencarian.png` | `GET /reports?status=`, `POST /reports/{id}/confirm`, `/reject` |
-| Laporan (mahasiswa): poin + hasil laporan | — | `GET /auth/me`, `GET /me/notifications` (`reportResolved`) |
-| Notifikasi (perubahan, laporan, peringatan dini, hasil laporan) | — | `GET /me/notifications`, `POST /notifications/{id}/read`, `/me/notifications/read-all`, `/me/notifications/seen` |
-| Profil akun | header `profil.png` | `GET /auth/me`, `POST /auth/logout` |
-| Panel demo (petugas) | — | `POST /demo/attendance-batch`, `/demo/early-warnings`, `/demo/reset` |
-| Mode uji (stopwatch) | — | `POST /test-runs`, `/test-runs/{id}/finish`, `GET /test-runs` |
-
-Tidak dipakai app: `POST /sync/attendance` (feed kampus, diwakili panel demo),
-`GET /test-runs/export` (CSV untuk fasilitator), `GET /test/notification-latency`,
-`POST/DELETE /me/devices` (push FCM belum dikonfigurasi di app; badge notifikasi
-di-refresh tiap 30 detik dan saat app dibuka lagi).
-
-## Error dari server
-
-`lib/data/remote/api_client.dart` memetakan `{message, code, errors}` ke `ApiFailure`
-(turunan `AppFailure`), dan UI menampilkan `message` dari server apa adanya.
-
-- **401 `unauthenticated`**: token dihapus, pengguna kembali ke Welcome dengan pesan
-  "Sesi login berakhir". (401 `wrongPassword`/`accountNotFound` saat login tetap jadi
-  error form.)
-- **409 `staleVersion`**: layar Ubah sesi menawarkan "Muat ulang" lalu memakai versi terbaru.
-- **422**: `errors` per field dipetakan ke field form (register/login).
-- Server tak terjangkau: pesan "Tidak bisa terhubung ke server (alamat)". Saat app dibuka
-  offline, akun terakhir dipakai dan layar menampilkan "gagal muat" / "data lama".
-
-## Menjalankan test
-
-```sh
-flutter analyze
-flutter test        # MockClient + test/fake_backend.dart, tanpa server
+```bash
+cd ../backend
+php artisan serve --host=0.0.0.0 --port=8000
 ```
 
-Opsional, ke backend sungguhan (mengubah data, reset sesudahnya):
+## Langkah 2: jalankan aplikasi
 
-```sh
+```bash
+flutter pub get
+flutter run
+```
+
+Alamat server yang dipakai secara default: `http://10.0.2.2:8000/api`. Itu alamat laptop dilihat dari emulator Android.
+
+Kalau aplikasi dijalankan di tempat lain, ganti alamatnya dengan `--dart-define`:
+
+| Aplikasi dijalankan di | Perintah |
+|---|---|
+| Emulator Android | `flutter run` |
+| HP sendiri (satu WiFi dengan laptop) | `flutter run --dart-define=API_BASE_URL=http://<IP-laptop>:8000/api` |
+| Browser Chrome | `flutter run -d chrome --dart-define=API_BASE_URL=http://127.0.0.1:8000/api` |
+| File APK | `flutter build apk --dart-define=API_BASE_URL=http://<IP-laptop>:8000/api` |
+
+Alamat yang sedang dipakai bisa dilihat di menu **Profil → Server**.
+
+Android mengizinkan koneksi `http` karena `usesCleartextTraffic="true"` di `android/app/src/main/AndroidManifest.xml`. Ini cukup untuk demo. Untuk aplikasi yang dirilis, pakai `https`.
+
+Jam di aplikasi mengikuti zona waktu perangkat. Atur emulator ke Asia/Jakarta supaya jamnya sama dengan jadwal kampus.
+
+## Akun untuk mencoba
+
+Semua akun memakai password `ruangin123`.
+
+| Email | Peran |
+|---|---|
+| `nadia@demo.ruangin.id` | Mahasiswa |
+| `raka@demo.ruangin.id` | Mahasiswa |
+| `rina@demo.ruangin.id` | Dosen |
+| `hendra@demo.ruangin.id` | Petugas |
+
+Akun yang dibuat lewat menu Daftar otomatis menjadi mahasiswa.
+
+## Layar di aplikasi
+
+Menu bawah: **Beranda · Jadwal · Laporan · Profil**.
+
+| Layar | Isinya |
+|---|---|
+| Beranda | Pencarian dosen, notifikasi, dan sesi hari ini. Dosen dan petugas melihat sesi yang bisa mereka ubah. |
+| Cari dosen | Hasil pencarian dan tampilan kalau tidak ada hasil. |
+| Profil dosen | Jadwal dosen per hari. |
+| Detail sesi | Status, riwayat, tombol ikuti, lapor ruang kosong, dan salin draf pesan ke dosen. |
+| Ubah sesi | Ganti ruang, jam, batalkan sesi, atau catat kehadiran. Dosen dan petugas saja. |
+| Jadwal | Sesi yang Anda ikuti. Dosen dan petugas juga melihat "Kelola". |
+| Laporan | Untuk dosen dan petugas: daftar laporan ruang kosong untuk dikonfirmasi atau ditolak. Untuk mahasiswa: poin dan hasil laporan Anda. |
+| Notifikasi | Perubahan sesi, laporan, peringatan dini, dan hasil laporan. |
+| Profil | Data akun dan tombol keluar. Petugas juga melihat Panel demo. |
+| Mode uji | Stopwatch untuk tugas uji pengguna. |
+
+Desain tampilan mengacu ke `../image/ui-ux/`. Folder ini tidak ada di git, jadi perlu disalin secara terpisah.
+
+## Kalau server tidak bisa dihubungi
+
+- Pesannya: "Tidak bisa terhubung ke server" beserta alamat yang dipakai. Cek lagi server sudah menyala dan alamatnya benar.
+- Kalau login habis masa berlakunya, aplikasi kembali ke layar awal dan menampilkan "Sesi login berakhir".
+- Kalau ada perubahan dari orang lain saat Anda mengedit sesi, aplikasi menawarkan tombol "Muat ulang".
+- Kalau aplikasi tidak bisa mengambil data terbaru, layar akan menampilkan pesan gagal muat. Buka lagi layar itu setelah server menyala.
+
+## Test dan pengecekan kode
+
+```bash
+flutter analyze
+flutter test
+```
+
+`flutter test` tidak butuh server. Ia memakai data palsu dari `test/fake_backend.dart`.
+
+Untuk menguji ke server sungguhan (mengubah data, jadi pakai database test):
+
+```bash
 RUANGIN_E2E_URL=http://127.0.0.1:8000/api flutter test test/e2e_api_test.dart
 ```
 
-## Arsitektur
+## Struktur kode
 
 ```
 lib/
-  core/          Result/AppFailure, Clock, formatter, api_config (API_BASE_URL)
-  data/          models (fromJson sesuai backend), remote/api_client.dart (HTTP + token),
-                 repositories/ (interface + implementasi API)
-  domain/        validasi form, auth_service (validasi lokal lalu /auth/*), aturan status
-  presentation/  controller (ChangeNotifier + Provider) dan widget yang hanya menampilkan state
+  core/          Hasil dan error, jam, format tanggal, dan alamat server (api_config.dart)
+  data/          Model data, klien HTTP (remote/api_client.dart), dan repository
+  domain/        Validasi form, layanan login, dan aturan status sesi
+  presentation/  Layar, controller, dan widget
 ```
 
-Token Sanctum disimpan di shared_preferences (`auth.token`, plus salinan akun terakhir).
-Theme & komponen: `lib/presentation/theme/app_theme.dart`,
-`lib/presentation/widgets/{auth_components,ruangin_widgets}.dart`. Font dibundel (OFL):
-Jost (UI) dan Source Serif 4 (judul).
+Token login disimpan di perangkat lewat `shared_preferences` (kunci `auth.token`).
+Tema ada di `lib/presentation/theme/app_theme.dart`. Font Jost dan Source Serif 4 ikut dibundel.

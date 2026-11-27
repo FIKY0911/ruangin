@@ -1,11 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/brand.dart';
 import '../../core/clock.dart';
 import '../../core/result.dart';
 import '../../core/view_state.dart';
 import '../../data/models/account.dart';
+import '../../data/models/app_notification.dart';
 import '../../data/models/session.dart';
 import '../../data/repositories/repositories.dart';
 import '../../domain/greeting.dart';
@@ -17,36 +19,50 @@ import '../session/follow_controller.dart';
 import '../session/session_detail_screen.dart';
 import '../theme/app_theme.dart';
 import '../widgets/async_state_view.dart';
+import '../widgets/ruangin_chrome.dart';
 import '../widgets/ruangin_widgets.dart';
 
 class HomeData {
-  const HomeData(this.sessions, this.nextSessionId);
+  const HomeData(this.sessions, this.nextSessionId, {this.warning});
 
   final List<Session> sessions;
   final String? nextSessionId;
+
+  /// Latest unread early warning from today (Beranda_peringatan_dini.png).
+  final AppNotification? warning;
 }
 
 /// Beranda: students see the sessions they follow today (`/me/today`);
 /// lecturers/officers see today's sessions they may edit (`/sessions?editable=1`).
 class HomeController extends AsyncController<HomeData> {
-  HomeController(this._repo, this._account, this._follows, super.clock) {
+  HomeController(
+    this._repo,
+    this._account,
+    this._follows,
+    super.clock, {
+    this._notifications,
+  }) {
     _follows.addListener(load);
+    _sub = _notifications?.changes.listen((_) => load());
   }
 
   final SessionRepository _repo;
   final Account _account;
   final FollowController _follows;
+  final NotificationRepository? _notifications;
+  StreamSubscription<void>? _sub;
 
   @override
   bool isEmpty(HomeData value) => value.sessions.isEmpty;
 
   @override
   Future<Result<HomeData>> fetch() async {
+    final warning = await _latestWarning();
     if (!_account.isEditor) {
       final r = await _repo.today();
       return switch (r) {
         Success(:final value) => Success(
-          HomeData(value.sessions, value.nextSessionId),
+          HomeData(value.sessions, value.nextSessionId, warning: warning),
         ),
         Failure(:final failure) => Failure(failure),
       };
@@ -60,14 +76,38 @@ class HomeController extends AsyncController<HomeData> {
               .where((s) => !s.isCancelled && s.end.isAfter(clock.now()))
               .firstOrNull
               ?.id,
+          warning: warning,
         ),
       ),
       Failure(:final failure) => Failure(failure),
     };
   }
 
+  /// Best effort: a failed notification fetch never blocks Beranda.
+  Future<AppNotification?> _latestWarning() async {
+    final repo = _notifications;
+    if (repo == null) return null;
+    final page = (await repo.list(unreadOnly: true)).valueOrNull;
+    final now = clock.now();
+    return page?.items
+        .where(
+          (n) =>
+              n.kind == NotificationKind.earlyWarning &&
+              !n.isRead &&
+              isSameDay(n.createdAt, now),
+        )
+        .firstOrNull;
+  }
+
+  /// Marks the banner's notification read and hides it.
+  Future<void> dismissWarning(AppNotification n) async {
+    await _notifications?.markRead(n.id);
+    _notifications?.notifyChanged();
+  }
+
   @override
   void dispose() {
+    _sub?.cancel();
     _follows.removeListener(load);
     super.dispose();
   }
@@ -90,6 +130,7 @@ class HomeScreen extends StatelessWidget {
         account,
         c.read<FollowController>(),
         c.read<Clock>(),
+        notifications: c.read<NotificationRepository>(),
       )..load(),
       child: _HomeView(account: account, onOpenMenu: onOpenMenu),
     );
@@ -106,98 +147,167 @@ class _HomeView extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.watch<HomeController>();
     final unread = context.watch<NotificationCenter>().unread;
+    final warning = controller.value?.warning;
 
-    return SafeArea(
-      child: Column(
+    return ColoredBox(
+      color: const Color(0xFFF7F7F9),
+      child: Stack(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 4, 4),
-            child: Row(
+          const WaveBackground(),
+          SafeArea(
+            bottom: false,
+            child: Column(
               children: [
-                Expanded(
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 14, 8, 0),
+                  child: Row(
+                    children: [
+                      const RuanginLogo(),
+                      const Spacer(),
+                      IconButton(
+                        key: const Key('nav-notifications'),
+                        tooltip: 'Notifikasi',
+                        iconSize: 30,
+                        onPressed: () => openNotifications(context),
+                        icon: Badge(
+                          isLabelVisible: unread > 0,
+                          label: Text('$unread'),
+                          child: const Icon(Icons.notifications_none),
+                        ),
+                      ),
+                      IconButton(
+                        key: const Key('home-menu'),
+                        tooltip: 'Menu',
+                        iconSize: 30,
+                        onPressed: onOpenMenu,
+                        icon: const Icon(Icons.menu),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
                   child: SearchPill(
                     key: const Key('home-search'),
-                    hint: 'Cari dosen',
+                    hint: 'Cari nama dosen',
+                    radius: 14,
                     onTap: () => openSearch(context),
                   ),
                 ),
-                IconButton(
-                  key: const Key('nav-notifications'),
-                  tooltip: 'Notifikasi',
-                  iconSize: 28,
-                  onPressed: () => openNotifications(context),
-                  icon: Badge(
-                    isLabelVisible: unread > 0,
-                    label: Text('$unread'),
-                    child: const Icon(Icons.notifications_none),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: controller.load,
+                    child: ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: EdgeInsets.only(
+                        bottom: MediaQuery.paddingOf(context).bottom + 24,
+                      ),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                          child: Wrap(
+                            spacing: 8,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(
+                                greetingFor(account),
+                                key: const Key('home-greeting'),
+                                style: AppFonts.sansStyle(
+                                  16,
+                                  600,
+                                  color: AppColors.ink,
+                                ),
+                              ),
+                              Text(
+                                account.role == UserRole.mahasiswa
+                                    ? '${account.subtitle} · '
+                                          '${account.points} poin'
+                                    : '${account.role.label} · '
+                                          '${account.subtitle}',
+                                style: AppFonts.sansStyle(
+                                  14,
+                                  400,
+                                  color: AppColors.muted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (warning != null)
+                          _WarningBanner(
+                            notification: warning,
+                            onTap: () async {
+                              await controller.dismissWarning(warning);
+                              if (context.mounted &&
+                                  warning.sessionId.isNotEmpty) {
+                                await openSessionDetail(
+                                  context,
+                                  warning.sessionId,
+                                );
+                              }
+                            },
+                          ),
+                        SectionTitle(
+                          'Sesi hari ini',
+                          padding: const EdgeInsets.fromLTRB(20, 18, 20, 6),
+                          subtitle: account.isEditor
+                              ? 'Sesi yang bisa Anda kelola'
+                              : 'Sesi yang Anda ikuti',
+                        ),
+                        _TodayList(controller: controller, account: account),
+                      ],
+                    ),
                   ),
-                ),
-                IconButton(
-                  key: const Key('home-menu'),
-                  tooltip: 'Menu',
-                  iconSize: 28,
-                  onPressed: onOpenMenu,
-                  icon: const Icon(Icons.menu),
                 ),
               ],
             ),
           ),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: controller.load,
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          greetingFor(account),
-                          key: const Key('home-greeting'),
-                          style: AppFonts.sansStyle(
-                            18,
-                            600,
-                            color: AppColors.ink,
-                          ),
-                        ),
-                        Text(
-                          account.role == UserRole.mahasiswa
-                              ? '${account.subtitle} · ${account.points} poin'
-                              : '${account.role.label} · ${account.subtitle}',
-                          style: AppFonts.sansStyle(
-                            14,
-                            400,
-                            color: AppColors.muted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  SectionTitle(
-                    'Sesi hari ini',
-                    subtitle: account.isEditor
-                        ? 'Sesi yang bisa Anda kelola'
-                        : 'Sesi yang Anda ikuti',
-                  ),
-                  _TodayList(controller: controller, account: account),
-                  const SizedBox(height: 32),
-                  Image.asset(BrandAssets.lecturer, height: 150),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(32, 12, 32, 32),
-                    child: Text(
-                      'Dosen mengajar dengan tanggung jawab, disiplin, dan '
-                      'integritas.',
-                      textAlign: TextAlign.center,
-                      style: AppFonts.sansStyle(16, 400, color: AppColors.ink),
-                    ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Pink early-warning banner (Beranda_peringatan_dini.png).
+class _WarningBanner extends StatelessWidget {
+  const _WarningBanner({required this.notification, required this.onTap});
+
+  final AppNotification notification;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Material(
+        color: const Color(0xFFFFE4E6),
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          key: const Key('home-warning'),
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  notification.title,
+                  style: AppFonts.sansStyle(17, 600, color: statusRed),
+                ),
+                if (notification.body.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    notification.body,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppFonts.sansStyle(14, 400, color: AppColors.ink),
                   ),
                 ],
-              ),
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -338,5 +448,7 @@ class InlineMessage extends StatelessWidget {
   }
 }
 
-Future<void> openNotifications(BuildContext context) => Navigator.of(context)
-    .push(MaterialPageRoute<void>(builder: (_) => const NotificationsScreen()));
+Future<void> openNotifications(BuildContext context) => Navigator.of(
+  context,
+  rootNavigator: true,
+).push(MaterialPageRoute<void>(builder: (_) => const NotificationsScreen()));

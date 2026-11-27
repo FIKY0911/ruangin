@@ -79,6 +79,10 @@ void main() {
       findsOneWidget,
     );
     expect(backend.reports.single['reporterId'], 'u-nadia');
+    ScaffoldMessenger.of(
+      tester.element(find.byKey(const Key('report-empty'))),
+    ).hideCurrentSnackBar();
+    await tester.pumpAndSettle();
 
     // P12 message draft.
     await tapKey(tester, 'message-draft');

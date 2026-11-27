@@ -7,9 +7,32 @@ import 'home/home_screen.dart';
 import 'profile/profile_screen.dart';
 import 'reports/reports_tab.dart';
 import 'session/followed_screen.dart';
+import 'widgets/ruangin_chrome.dart';
 import 'widgets/ruangin_widgets.dart';
 
-/// Bottom navigation from image/ui-ux: Beranda · Jadwal · Laporan · Profil.
+/// Navigator of the Beranda tab. Search and lecturer profiles open inside it
+/// so the floating nav bar stays visible (Hasil_cari1.png, Profil_Dosen.png);
+/// session detail and notifications open full screen on the root navigator.
+final berandaNavigatorKey = GlobalKey<NavigatorState>();
+
+const _navItems = [
+  NavItem(Key('nav-home'), Icons.home_outlined, Icons.home_rounded, 'Beranda'),
+  NavItem(
+    Key('nav-schedule'),
+    Icons.calendar_today_outlined,
+    Icons.calendar_today,
+    'Jadwal',
+  ),
+  NavItem(
+    Key('nav-reports'),
+    Icons.description_outlined,
+    Icons.description,
+    'Laporan',
+  ),
+  NavItem(Key('nav-profile'), Icons.person_outline, Icons.person, 'Profil'),
+];
+
+/// Floating nav from image/ui-ux: Beranda · Jadwal · Laporan · Profil.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -20,52 +43,67 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
+  void _select(int i) {
+    if (i == 0 && _index == 0) {
+      berandaNavigatorKey.currentState?.popUntil((r) => r.isFirst);
+    }
+    setState(() => _index = i);
+  }
+
   @override
   Widget build(BuildContext context) {
     final account = context.watch<AuthController>().account!;
     return Scaffold(
       backgroundColor: Colors.white,
+      extendBody: true,
       body: IndexedStack(
         key: ValueKey(account.id),
         index: _index,
         children: [
-          HomeScreen(onOpenMenu: () => setState(() => _index = 3)),
-          const ScheduleTab(),
-          const ReportsTab(),
-          const ProfileScreen(),
+          NavigatorPopHandler(
+            enabled: _index == 0,
+            onPopWithResult: (_) =>
+                berandaNavigatorKey.currentState?.maybePop(),
+            child: Navigator(
+              key: berandaNavigatorKey,
+              onGenerateRoute: (_) => MaterialPageRoute<void>(
+                builder: (_) =>
+                    HomeScreen(onOpenMenu: () => setState(() => _index = 3)),
+              ),
+            ),
+          ),
+          const _ClearNav(child: ScheduleTab()),
+          const _ClearNav(child: ReportsTab()),
+          const _ClearNav(child: ProfileScreen()),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        backgroundColor: Colors.white,
-        indicatorColor: Colors.transparent,
+      bottomNavigationBar: RuanginNavBar(
+        items: _navItems,
         selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: const [
-          NavigationDestination(
-            key: Key('nav-home'),
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home_rounded),
-            label: 'Beranda',
-          ),
-          NavigationDestination(
-            key: Key('nav-schedule'),
-            icon: Icon(Icons.calendar_today_outlined),
-            selectedIcon: Icon(Icons.calendar_today),
-            label: 'Jadwal',
-          ),
-          NavigationDestination(
-            key: Key('nav-reports'),
-            icon: Icon(Icons.bar_chart_outlined),
-            selectedIcon: Icon(Icons.bar_chart),
-            label: 'Laporan',
-          ),
-          NavigationDestination(
-            key: Key('nav-profile'),
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Profil',
-          ),
-        ],
+        onSelected: _select,
+      ),
+    );
+  }
+}
+
+/// Keeps tabs without the blue wave clear of the floating nav bar.
+class _ClearNav extends StatelessWidget {
+  const _ClearNav({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final inset = MediaQuery.paddingOf(context).bottom;
+    return ColoredBox(
+      color: Colors.white,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: inset),
+        child: MediaQuery.removePadding(
+          context: context,
+          removeBottom: true,
+          child: child,
+        ),
       ),
     );
   }

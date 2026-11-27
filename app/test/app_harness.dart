@@ -30,7 +30,19 @@ Future<void> pumpApp(
   await tester.pumpAndSettle();
 }
 
+/// Scrolls the first scrollable until [finder] is built (lazy lists).
+Future<void> revealIn(WidgetTester tester, Finder finder) async {
+  if (finder.evaluate().isEmpty) {
+    await tester.scrollUntilVisible(
+      finder,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+  }
+}
+
 Future<void> tapKey(WidgetTester tester, String key) async {
+  await revealIn(tester, find.byKey(Key(key)));
   await tester.ensureVisible(find.byKey(Key(key)));
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(Key(key)));

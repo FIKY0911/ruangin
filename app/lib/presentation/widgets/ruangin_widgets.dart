@@ -10,6 +10,22 @@ import '../theme/app_theme.dart';
 const _cardColor = Color(0xFFF2F3F7);
 const _avatarColor = Color(0xFFDCE8FF);
 
+/// Grey card fill shared by the image/ui-ux cards.
+const softCardColor = _cardColor;
+
+/// Light blue used for selected chips, avatars and the nav highlight.
+const softBlue = _avatarColor;
+
+/// Status colours from detail_sesi1.png / detail_sesi_tercatat.png.
+const statusRed = Color(0xFFDC2626);
+const statusGreen = Color(0xFF15803D);
+
+(Color, IconData) statusStyle(SessionStatus status) => switch (status) {
+  SessionStatus.tercatat => (statusGreen, Icons.check_circle_outline),
+  SessionStatus.belumTerkonfirmasi => (statusRed, Icons.schedule),
+  SessionStatus.batal => (statusRed, Icons.cancel_outlined),
+};
+
 /// "BS" for "Dr. Budi Santoso" (titles and degrees skipped).
 String initialsOf(String name) {
   final words = name
@@ -56,7 +72,7 @@ class InitialsAvatar extends StatelessWidget {
   }
 }
 
-/// Serif section heading ("Sesi hari ini", "Hasil cari").
+/// Bold section heading ("Sesi hari ini", "Hasil cari").
 class SectionTitle extends StatelessWidget {
   const SectionTitle(this.text, {super.key, this.subtitle, this.padding});
 
@@ -71,7 +87,7 @@ class SectionTitle extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(text, style: AppFonts.serifStyle(26, 700, color: AppColors.ink)),
+          Text(text, style: AppFonts.sansStyle(28, 700, color: AppColors.ink)),
           if (subtitle != null) ...[
             const SizedBox(height: 4),
             Text(
@@ -96,6 +112,7 @@ class SearchPill extends StatelessWidget {
     this.onClear,
     this.autofocus = false,
     this.hint = 'Cari nama dosen',
+    this.radius = 999,
   });
 
   final TextEditingController? controller;
@@ -105,10 +122,13 @@ class SearchPill extends StatelessWidget {
   final bool autofocus;
   final String hint;
 
+  /// 999 = pill (search screen); 14 = rounded box (Beranda).
+  final double radius;
+
   @override
   Widget build(BuildContext context) {
     final border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: BorderRadius.circular(radius),
       borderSide: const BorderSide(color: Color(0xFFE6E7EC)),
     );
     return TextField(
@@ -131,7 +151,7 @@ class SearchPill extends StatelessWidget {
                 icon: const Icon(Icons.close, color: AppColors.muted),
                 onPressed: onClear,
               ),
-        contentPadding: const EdgeInsets.symmetric(vertical: 12),
+        contentPadding: EdgeInsets.symmetric(vertical: radius < 100 ? 16 : 12),
         border: border,
         enabledBorder: border,
         focusedBorder: border.copyWith(
@@ -179,34 +199,34 @@ class StatusPill extends StatelessWidget {
   }
 }
 
-/// Status as icon + text (profil.png session rows).
+/// Status as icon + text (Profil_Dosen.png and Beranda cards). [short]
+/// drops the sync time ("Tercatat" instead of "Tercatat · Sinkron ...").
 class StatusLine extends StatelessWidget {
-  const StatusLine({super.key, required this.session});
+  const StatusLine({
+    super.key,
+    required this.session,
+    this.short = false,
+    this.size = 14,
+    this.weight = 500,
+  });
 
   final Session session;
+  final bool short;
+  final double size;
+  final int weight;
 
   @override
   Widget build(BuildContext context) {
-    final (color, icon) = switch (session.status) {
-      SessionStatus.tercatat => (
-        const Color(0xFF15803D),
-        Icons.check_circle_outline,
-      ),
-      SessionStatus.belumTerkonfirmasi => (
-        const Color(0xFFC2410C),
-        Icons.schedule,
-      ),
-      SessionStatus.batal => (const Color(0xFFB91C1C), Icons.cancel_outlined),
-    };
+    final (color, icon) = statusStyle(session.status);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 18, color: color),
-        const SizedBox(width: 6),
+        Icon(icon, size: size + 6, color: color),
+        SizedBox(width: size * 0.5),
         Flexible(
           child: Text(
-            session.statusLabel,
-            style: AppFonts.sansStyle(14, 500, color: color),
+            short ? session.statusShortLabel : session.statusLabel,
+            style: AppFonts.sansStyle(size, weight, color: color),
           ),
         ),
       ],
@@ -214,7 +234,8 @@ class StatusLine extends StatelessWidget {
   }
 }
 
-/// Beranda "Sesi hari ini" card: time + room | course + lecturer | status.
+/// Beranda "Sesi hari ini" card (beranda_tanpa_peringatan.png): icon box |
+/// course + lecturer, then time · room, then the status line.
 class SessionCard extends StatelessWidget {
   const SessionCard({
     super.key,
@@ -235,97 +256,122 @@ class SessionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = session;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Material(
         color: _cardColor,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           side: highlight
               ? const BorderSide(color: AppColors.accent, width: 1.4)
-              : BorderSide.none,
+              : const BorderSide(color: Color(0xFFE4E6EE)),
         ),
         child: InkWell(
           key: Key('session-${s.id}'),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: IntrinsicHeight(
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 104,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          formatTimeRange(s.start, s.end),
-                          style: AppFonts.sansStyle(
-                            15,
-                            600,
-                            color: AppColors.ink,
-                          ),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                IntrinsicHeight(
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE6E7EC),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          s.room,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppFonts.sansStyle(
-                            14,
-                            400,
-                            color: AppColors.muted,
-                          ),
+                        child: const Icon(
+                          Icons.layers_outlined,
+                          color: AppColors.muted,
                         ),
-                      ],
-                    ),
-                  ),
-                  const VerticalDivider(width: 20, color: Color(0xFFCFD1D8)),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          s.courseName,
-                          style:
-                              AppFonts.sansStyle(
-                                16,
-                                500,
-                                color: AppColors.ink,
-                              ).copyWith(
-                                decoration: s.isCancelled
-                                    ? TextDecoration.lineThrough
-                                    : null,
-                              ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          s.lecturer?.name ?? 'Prodi ${s.prodi}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppFonts.sansStyle(
-                            14,
-                            400,
-                            color: AppColors.muted,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Row(
+                      ),
+                      const VerticalDivider(
+                        width: 28,
+                        thickness: 1,
+                        color: Color(0xFFD5D7DE),
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Flexible(child: StatusPill(session: s)),
-                            if (trailingBadge != null) ...[
-                              const SizedBox(width: 6),
-                              trailingBadge!,
-                            ],
+                            Text(
+                              s.courseName,
+                              style:
+                                  AppFonts.sansStyle(
+                                    19,
+                                    600,
+                                    color: AppColors.ink,
+                                  ).copyWith(
+                                    decoration: s.isCancelled
+                                        ? TextDecoration.lineThrough
+                                        : null,
+                                  ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              s.lecturer?.name ?? 'Prodi ${s.prodi}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppFonts.sansStyle(
+                                15,
+                                400,
+                                color: AppColors.muted,
+                              ),
+                            ),
                           ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const SizedBox(width: 6),
+                    const Icon(
+                      Icons.location_on_outlined,
+                      size: 20,
+                      color: AppColors.muted,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '${formatTimeRange(s.start, s.end)} · ${s.room}',
+                        style: AppFonts.sansStyle(
+                          15,
+                          400,
+                          color: AppColors.muted,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: StatusLine(
+                          session: s,
+                          short: true,
+                          size: 16,
+                          weight: 600,
+                        ),
+                      ),
+                      if (trailingBadge != null) ...[
+                        const SizedBox(width: 8),
+                        trailingBadge!,
+                      ],
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ),

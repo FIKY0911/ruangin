@@ -14,6 +14,14 @@ extension SessionStatusText on Session {
         SessionStatus.belumTerkonfirmasi => 'Belum terkonfirmasi',
       };
 
+  /// Card/headline label without the sync time (beranda_tanpa_peringatan.png,
+  /// detail_sesi_tercatat.png).
+  String get statusShortLabel => switch (status) {
+        SessionStatus.batal => 'Batal',
+        SessionStatus.tercatat => 'Tercatat',
+        SessionStatus.belumTerkonfirmasi => 'Belum terkonfirmasi',
+      };
+
   String get statusExplanation => switch (status) {
         SessionStatus.tercatat =>
           'Kehadiran kelas tercatat di sistem absensi. "Tercatat" bukan berarti '

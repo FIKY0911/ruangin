@@ -9,6 +9,7 @@ import '../../data/repositories/repositories.dart';
 import '../lecturer/lecturer_profile_screen.dart';
 import '../theme/app_theme.dart';
 import '../widgets/async_state_view.dart';
+import '../widgets/ruangin_chrome.dart';
 import '../widgets/ruangin_widgets.dart';
 import 'search_controller.dart';
 
@@ -16,7 +17,7 @@ Future<void> openSearch(BuildContext context) =>
     Navigator.of(context)
         .push(MaterialPageRoute<void>(builder: (_) => const SearchScreen()));
 
-/// P01 — image/ui-ux/Hasil_Pencarian.png and Hasil_Pencarian_Tidak_Ada.png.
+/// P01 — image/ui-ux/Hasil_cari1.png and Tidak_ada_Hasil.png.
 class SearchScreen extends StatelessWidget {
   const SearchScreen({super.key});
 
@@ -52,63 +53,91 @@ class _SearchViewState extends State<_SearchView> {
   Widget build(BuildContext context) {
     final controller = context.watch<LecturerSearchController>();
     final hasQuery = controller.query.trim().isNotEmpty;
+    final bottom = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
       backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 8, 16, 0),
-              child: Row(
-                children: [
-                  const BackButton(),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: SearchPill(
-                      key: const Key('search-field'),
-                      controller: _text,
-                      autofocus: true,
-                      hint: 'Cari nama dosen, mis. "rina"',
-                      onChanged: controller.onQueryChanged,
-                      onClear: hasQuery
-                          ? () {
-                              _text.clear();
-                              controller.onQueryChanged('');
-                            }
-                          : null,
-                    ),
+      body: Stack(
+        children: [
+          const WaveBackground(heightFactor: 0.22),
+          SafeArea(
+            bottom: false,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 8, 16, 0),
+                  child: Row(
+                    children: [
+                      const BackButton(),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: SearchPill(
+                          key: const Key('search-field'),
+                          controller: _text,
+                          autofocus: true,
+                          hint: 'Cari nama dosen, mis. "rina"',
+                          onChanged: controller.onQueryChanged,
+                          onClear: hasQuery
+                              ? () {
+                                  _text.clear();
+                                  controller.onQueryChanged('');
+                                }
+                              : null,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-            SectionTitle(
-              hasQuery ? 'Hasil cari' : 'Semua dosen',
-              subtitle: switch (controller.state) {
-                ViewData(:final data) => '${data.length} dosen ditemukan',
-                _ => null,
-              },
-            ),
-            Expanded(
-              child: AsyncStateView<List<Lecturer>>(
-                state: controller.state,
-                onRetry: controller.load,
-                emptyTitle: 'Tidak ada hasil',
-                emptyMessage:
-                    'Tidak ada dosen yang cocok. Coba sebagian nama saja.',
-                emptyImage: BrandAssets.discuss,
-                showFreshness: false,
-                builder: (context, lecturers) => ListView.builder(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.only(bottom: 16),
-                  itemCount: lecturers.length,
-                  itemBuilder: (context, i) =>
-                      _LecturerCard(lecturer: lecturers[i]),
                 ),
-              ),
+                SectionTitle(
+                  hasQuery ? 'Hasil cari' : 'Semua dosen',
+                  subtitle: switch (controller.state) {
+                    ViewData(:final data) => '${data.length} dosen ditemukan',
+                    _ => null,
+                  },
+                ),
+                Expanded(
+                  child: switch (controller.state) {
+                    // Tidak_ada_Hasil.png
+                    ViewEmpty() => SingleChildScrollView(
+                      padding: EdgeInsets.only(bottom: bottom + 24),
+                      child: const Center(
+                        key: Key('state-empty'),
+                        child: IllustrationMessage(
+                          image: BrandAssets.noResults,
+                          title: 'Tidak ada hasil',
+                          message:
+                              'Tidak ada dosen yang cocok. Coba sebagian '
+                              'nama saja.',
+                        ),
+                      ),
+                    ),
+                    final state => AsyncStateView<List<Lecturer>>(
+                      state: state,
+                      onRetry: controller.load,
+                      emptyTitle: 'Tidak ada hasil',
+                      showFreshness: false,
+                      // Hasil_cari1.png: results, then the illustration.
+                      builder: (context, lecturers) => ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: EdgeInsets.only(bottom: bottom + 24),
+                        children: [
+                          for (final l in lecturers) _LecturerCard(lecturer: l),
+                          const SizedBox(height: 24),
+                          const IllustrationMessage(
+                            image: BrandAssets.lecturerSitting,
+                            message:
+                                'Dosen mengajar dengan tanggung jawab, '
+                                'disiplin, dan integritas.',
+                          ),
+                        ],
+                      ),
+                    ),
+                  },
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

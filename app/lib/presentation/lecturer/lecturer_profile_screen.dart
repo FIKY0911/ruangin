@@ -13,6 +13,8 @@ import '../session/session_detail_screen.dart';
 import '../theme/app_theme.dart';
 import '../widgets/async_state_view.dart';
 import '../widgets/ruangin_widgets.dart';
+import 'attendance_controller.dart';
+import 'attendance_history_screen.dart';
 import 'timeline_controller.dart';
 
 Future<void> openLecturer(BuildContext context, String lecturerId) =>
@@ -22,8 +24,8 @@ Future<void> openLecturer(BuildContext context, String lecturerId) =>
       ),
     );
 
-/// P02 — image/ui-ux/profil.png: lecturer header, day picker, timeline of the
-/// selected day across all prodi.
+/// P02 — image/ui-ux/Profil_Dosen.png: blue header, attendance summary for
+/// this week, week strip and the selected day's sessions across all prodi.
 class LecturerProfileScreen extends StatelessWidget {
   const LecturerProfileScreen({super.key, required this.lecturerId});
 
@@ -47,6 +49,13 @@ class LecturerProfileScreen extends StatelessWidget {
             c.read<Clock>(),
           )..load(),
         ),
+        ChangeNotifierProvider(
+          create: (c) => WeekAttendanceController(
+            c.read<SessionRepository>(),
+            lecturerId,
+            c.read<Clock>(),
+          )..load(),
+        ),
       ],
       child: const _ProfileView(),
     );
@@ -63,22 +72,23 @@ class _ProfileView extends StatelessWidget {
       backgroundColor: Colors.white,
       body: switch (lecturer.state) {
         ViewData(:final data) => Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _Header(lecturer: data),
-            const _DayPicker(),
-            const Expanded(child: _Timeline()),
+            const _TopBar(),
+            Expanded(child: _Sheet(lecturer: data)),
           ],
         ),
         final state => Column(
           children: [
-            const _HeaderBar(),
+            const _TopBar(),
             Expanded(
-              child: AsyncStateView<Lecturer>(
-                state: state,
-                onRetry: lecturer.load,
-                emptyTitle: 'Dosen tidak ditemukan',
-                builder: (_, _) => const SizedBox.shrink(),
+              child: ColoredBox(
+                color: Colors.white,
+                child: AsyncStateView<Lecturer>(
+                  state: state,
+                  onRetry: lecturer.load,
+                  emptyTitle: 'Dosen tidak ditemukan',
+                  builder: (_, _) => const SizedBox.shrink(),
+                ),
               ),
             ),
           ],
@@ -88,40 +98,28 @@ class _ProfileView extends StatelessWidget {
   }
 }
 
-const _headerGradient = LinearGradient(
-  begin: Alignment.topCenter,
-  end: Alignment.bottomCenter,
-  colors: [Color(0xFFD3E2FB), Color(0xFFE6EEFC)],
-);
-
-class _HeaderBar extends StatelessWidget {
-  const _HeaderBar({this.extra = 0});
-
-  /// Extra gradient below the title row (room for the avatar).
-  final double extra;
+/// Pinned blue row: back + "Profil dosen".
+class _TopBar extends StatelessWidget {
+  const _TopBar();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(gradient: _headerGradient),
+    return ColoredBox(
+      color: AppColors.accent,
       child: SafeArea(
         bottom: false,
-        child: SizedBox(
-          height: 56 + extra,
-          child: Align(
-            alignment: Alignment.topLeft,
-            child: SizedBox(
-              height: 56,
-              child: Row(
-                children: [
-                  const BackButton(),
-                  Text(
-                    'Profil dosen',
-                    style: AppFonts.sansStyle(20, 500, color: AppColors.ink),
-                  ),
-                ],
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(4, 4, 16, 0),
+          child: Row(
+            children: [
+              const BackButton(color: Colors.white),
+              Flexible(
+                child: Text(
+                  'Profil dosen',
+                  style: AppFonts.sansStyle(20, 500, color: Colors.white),
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
@@ -129,54 +127,221 @@ class _HeaderBar extends StatelessWidget {
   }
 }
 
-class _Header extends StatelessWidget {
-  const _Header({required this.lecturer});
+/// Name + prodi on blue (scrolls with the page).
+class _NameBlock extends StatelessWidget {
+  const _NameBlock({required this.lecturer});
 
   final Lecturer lecturer;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.bottomCenter,
-          children: [
-            const Padding(
-              padding: EdgeInsets.only(bottom: 48),
-              child: _HeaderBar(extra: 40),
-            ),
-            Positioned(
-              bottom: 0,
-              child: InitialsAvatar(name: lecturer.name, size: 96, border: 4),
-            ),
-          ],
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 10, 150, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            lecturer.name,
+            key: const Key('lecturer-name'),
+            style: AppFonts.sansStyle(30, 700, color: Colors.white),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            lecturer.prodi,
+            style: AppFonts.sansStyle(20, 400, color: Colors.white),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Below the pinned top bar everything scrolls: name on blue, white sheet with rounded top
+/// and the square initials avatar on its edge, then the content.
+class _Sheet extends StatelessWidget {
+  const _Sheet({required this.lecturer});
+
+  final Lecturer lecturer;
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      onRefresh: () async {
+        await Future.wait([
+          context.read<TimelineController>().load(),
+          context.read<WeekAttendanceController>().load(),
+        ]);
+      },
+      child: ListView(
+        physics: const ClampingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
         ),
-        const SizedBox(height: 10),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Column(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.paddingOf(context).bottom + 16,
+        ),
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
             children: [
-              Text(
-                lecturer.name,
-                key: const Key('lecturer-name'),
-                textAlign: TextAlign.center,
-                style: AppFonts.sansStyle(24, 700, color: AppColors.ink),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ColoredBox(
+                    color: AppColors.accent,
+                    child: _NameBlock(lecturer: lecturer),
+                  ),
+                  Container(
+                    height: 32,
+                    color: AppColors.accent,
+                    child: const DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.vertical(
+                          top: Radius.circular(32),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 2),
-              Text(
-                lecturer.prodi,
-                style: AppFonts.sansStyle(16, 400, color: AppColors.muted),
-              ),
-              Text(
-                '${lecturer.faculty} · Timeline gabungan semua prodi',
-                textAlign: TextAlign.center,
-                style: AppFonts.sansStyle(13, 400, color: AppColors.muted),
+              Positioned(
+                bottom: -30,
+                right: 20,
+                child: _SquareAvatar(name: lecturer.name),
               ),
             ],
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 150, 0),
+            child: Text(
+              '${lecturer.faculty} · Timeline gabungan semua prodi',
+              style: AppFonts.sansStyle(14, 400, color: AppColors.muted),
+            ),
+          ),
+          const _AttendanceSummary(),
+          const _WeekPicker(),
+          const _Timeline(),
+        ],
+      ),
+    );
+  }
+}
+
+class _SquareAvatar extends StatelessWidget {
+  const _SquareAvatar({required this.name});
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 116,
+    height: 116,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      color: softBlue,
+      borderRadius: BorderRadius.circular(26),
+      border: Border.all(color: Colors.white, width: 4),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x33000000),
+          blurRadius: 16,
+          offset: Offset(0, 6),
         ),
       ],
+    ),
+    child: Text(
+      initialsOf(name),
+      style: AppFonts.sansStyle(44, 700, color: AppColors.accent),
+    ),
+  );
+}
+
+/// "Kehadiran minggu ini · Tercatat di X dari Y sesi" + "Lihat riwayat".
+class _AttendanceSummary extends StatelessWidget {
+  const _AttendanceSummary();
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = context.watch<WeekAttendanceController>();
+    final lecturer = context.read<LecturerController>().value!;
+    final summary = switch (controller.state) {
+      ViewData(:final data) => data,
+      _ => null,
+    };
+    final ink = AppFonts.sansStyle(19, 400, color: AppColors.ink);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 18, 8, 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Kehadiran minggu ini',
+                  style: AppFonts.sansStyle(17, 700, color: AppColors.ink),
+                ),
+                const SizedBox(height: 4),
+                switch (controller.state) {
+                  ViewLoading() => Text('Memuat…', style: ink),
+                  ViewError() => Text(
+                    'Gagal memuat',
+                    style: ink.copyWith(color: AppColors.muted),
+                  ),
+                  _ =>
+                    summary == null || summary.counted == 0
+                        ? Text(
+                            'Belum ada sesi yang selesai',
+                            key: const Key('attendance-summary'),
+                            style: ink,
+                          )
+                        : Text.rich(
+                            key: const Key('attendance-summary'),
+                            TextSpan(
+                              text: 'Tercatat di ',
+                              children: [
+                                TextSpan(
+                                  text:
+                                      '${summary.recorded} dari '
+                                      '${summary.counted} sesi',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            style: ink,
+                          ),
+                },
+                const SizedBox(height: 2),
+                Text(
+                  'Sesi yang sudah lewat, tanpa sesi batal',
+                  style: AppFonts.sansStyle(13, 400, color: AppColors.muted),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            key: const Key('open-attendance'),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => ChangeNotifierProvider.value(
+                  value: controller,
+                  child: AttendanceHistoryScreen(lecturer: lecturer),
+                ),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Lihat riwayat', style: AppFonts.sansStyle(16, 600)),
+                const Icon(Icons.chevron_right),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -186,112 +351,85 @@ const _monthNames = [
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
 ];
 const _dayShort = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+const _dayLong = [
+  'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu', //
+];
 
-/// Month heading + a strip of day chips (two weeks from this Monday).
-class _DayPicker extends StatelessWidget {
-  const _DayPicker();
+/// Month heading with ‹ › (previous / next week) and the weekday strip.
+/// Saturday and Sunday appear only when one of them is selected.
+class _WeekPicker extends StatelessWidget {
+  const _WeekPicker();
 
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<TimelineController>();
-    final today = dateOnly(context.read<Clock>().now());
     final selected = controller.date;
-    final monday = today.subtract(Duration(days: today.weekday - 1));
+    final monday = selected.subtract(Duration(days: selected.weekday - 1));
     final days = [
-      for (var i = 0; i < 14; i++)
+      for (var i = 0; i < (selected.weekday > 5 ? 7 : 5); i++)
         DateTime(monday.year, monday.month, monday.day + i),
     ];
-    if (!days.any((d) => isSameDay(d, selected))) days.insert(0, selected);
+    final compact = days.length > 5;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 8, 6),
+          padding: const EdgeInsets.fromLTRB(20, 14, 8, 4),
           child: Row(
             children: [
               Expanded(
                 child: Text(
                   '${_monthNames[selected.month - 1]} ${selected.year}',
-                  style: AppFonts.sansStyle(22, 700, color: AppColors.ink),
+                  style: AppFonts.sansStyle(20, 700, color: AppColors.ink),
                 ),
               ),
               IconButton(
-                key: const Key('pick-date'),
-                tooltip: 'Pilih tanggal',
-                icon: const Icon(Icons.calendar_month_outlined),
-                onPressed: () async {
-                  final picked = await showDatePicker(
-                    context: context,
-                    initialDate: selected,
-                    firstDate: today.subtract(const Duration(days: 60)),
-                    lastDate: today.add(const Duration(days: 120)),
-                  );
-                  if (picked != null) controller.selectDate(picked);
-                },
+                key: const Key('week-prev'),
+                tooltip: 'Minggu sebelumnya',
+                icon: const Icon(Icons.chevron_left),
+                onPressed: () => controller.selectDate(
+                  selected.subtract(const Duration(days: 7)),
+                ),
+              ),
+              IconButton(
+                key: const Key('week-next'),
+                tooltip: 'Minggu berikutnya',
+                icon: const Icon(Icons.chevron_right),
+                onPressed: () => controller.selectDate(
+                  selected.add(const Duration(days: 7)),
+                ),
               ),
             ],
           ),
         ),
-        SizedBox(
-          height: 72,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: days.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 8),
-            itemBuilder: (context, i) {
-              final d = days[i];
-              final active = isSameDay(d, selected);
-              return InkWell(
-                key: Key('day-${isoDate(d)}'),
-                borderRadius: BorderRadius.circular(12),
-                onTap: () => controller.selectDate(d),
-                child: Container(
-                  width: 60,
-                  decoration: BoxDecoration(
-                    color: active ? AppColors.accent : Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: active
-                          ? AppColors.accent
-                          : const Color(0xFFE3E4EA),
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        _dayShort[d.weekday - 1],
-                        style: AppFonts.sansStyle(
-                          14,
-                          400,
-                          color: active ? Colors.white : AppColors.ink,
-                        ),
-                      ),
-                      Text(
-                        '${d.day}',
-                        style: AppFonts.sansStyle(
-                          22,
-                          700,
-                          color: active ? Colors.white : AppColors.ink,
-                        ),
-                      ),
-                    ],
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: softCardColor,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            children: [
+              for (final d in days)
+                Expanded(
+                  child: _DayChip(
+                    day: d,
+                    active: isSameDay(d, selected),
+                    compact: compact,
+                    onTap: () => controller.selectDate(d),
                   ),
                 ),
-              );
-            },
+            ],
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 6),
           child: Text(
-            isSameDay(selected, today)
-                ? 'Sesi hari ini'
-                : 'Sesi ${formatDate(selected)}',
+            'Sesi ${_dayLong[selected.weekday - 1]}, ${formatShortDate(selected)}',
             key: const Key('timeline-date'),
-            style: AppFonts.sansStyle(22, 700, color: AppColors.ink),
+            style: AppFonts.sansStyle(24, 700, color: AppColors.ink),
           ),
         ),
       ],
@@ -299,6 +437,51 @@ class _DayPicker extends StatelessWidget {
   }
 }
 
+class _DayChip extends StatelessWidget {
+  const _DayChip({
+    required this.day,
+    required this.active,
+    required this.compact,
+    required this.onTap,
+  });
+
+  final DateTime day;
+  final bool active;
+  final bool compact;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = active ? Colors.white : AppColors.ink;
+    return InkWell(
+      key: Key('day-${isoDate(day)}'),
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Container(
+        height: 64,
+        decoration: BoxDecoration(
+          color: active ? AppColors.accent : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              _dayShort[day.weekday - 1],
+              style: AppFonts.sansStyle(15, 500, color: color),
+            ),
+            Text(
+              '${day.day}',
+              style: AppFonts.sansStyle(compact ? 20 : 24, 700, color: color),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Sessions of the selected day; lives inside the sheet's ListView.
 class _Timeline extends StatelessWidget {
   const _Timeline();
 
@@ -306,26 +489,174 @@ class _Timeline extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.watch<TimelineController>();
     final followed = context.watch<FollowController>().followed;
-    return AsyncStateView<List<Session>>(
-      state: controller.state,
-      onRetry: controller.load,
-      emptyTitle: 'Tidak ada jadwal mengajar di tanggal ini',
-      emptyMessage: 'Coba tanggal lain.',
-      emptyImage: BrandAssets.lecturer,
-      showFreshness: false,
-      builder: (context, sessions) => ListView.separated(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(bottom: 16),
-        itemCount: sessions.length,
-        separatorBuilder: (_, _) =>
-            const Divider(height: 1, indent: 20, endIndent: 20),
-        itemBuilder: (context, i) => SessionRow(
-          session: sessions[i],
-          isFollowed: followed.contains(sessions[i].id),
-          onTap: () async {
-            await openSessionDetail(context, sessions[i].id);
-            controller.load();
-          },
+    final homeProdi = context.read<LecturerController>().value?.prodi;
+    Widget emptyMessage(String title, String text, {Key? key}) => Padding(
+      key: key,
+      padding: const EdgeInsets.fromLTRB(32, 16, 32, 16),
+      child: Column(
+        children: [
+          Image.asset(BrandAssets.lecturer, height: 120),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: AppFonts.sansStyle(17, 600, color: AppColors.ink),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            text,
+            textAlign: TextAlign.center,
+            style: AppFonts.sansStyle(14, 400, color: AppColors.muted),
+          ),
+        ],
+      ),
+    );
+    return switch (controller.state) {
+      ViewLoading() => const Padding(
+        padding: EdgeInsets.all(32),
+        child: Center(
+          key: Key('state-loading'),
+          child: CircularProgressIndicator(),
+        ),
+      ),
+      ViewError(:final message) => _ErrorMessage(
+        message: message,
+        onRetry: controller.load,
+      ),
+      ViewEmpty() => emptyMessage(
+        'Tidak ada jadwal mengajar di tanggal ini',
+        'Coba tanggal lain.',
+        key: const Key('state-empty'),
+      ),
+      ViewData(:final data, :final fetchedAt, :final staleReason) => Column(
+        children: [
+          if (staleReason != null)
+            FreshnessBanner(
+              fetchedAt: fetchedAt,
+              staleReason: staleReason,
+              onRetry: controller.load,
+            ),
+          for (final s in data)
+            _SessionCard(
+              session: s,
+              homeProdi: homeProdi,
+              isFollowed: followed.contains(s.id),
+              onTap: () async {
+                await openSessionDetail(context, s.id);
+                controller.load();
+              },
+            ),
+        ],
+      ),
+    };
+  }
+}
+
+class _ErrorMessage extends StatelessWidget {
+  const _ErrorMessage({required this.message, required this.onRetry});
+
+  final String message;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    key: const Key('state-error'),
+    padding: const EdgeInsets.all(32),
+    child: Column(
+      children: [
+        const Icon(Icons.cloud_off_outlined, size: 44, color: AppColors.icon),
+        const SizedBox(height: 8),
+        Text(
+          'Gagal memuat',
+          style: AppFonts.sansStyle(17, 600, color: AppColors.ink),
+        ),
+        Text(
+          message,
+          textAlign: TextAlign.center,
+          style: AppFonts.sansStyle(14, 400, color: AppColors.muted),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton(onPressed: onRetry, child: const Text('Coba lagi')),
+      ],
+    ),
+  );
+}
+
+/// Grey session card from Profil_Dosen.png.
+class _SessionCard extends StatelessWidget {
+  const _SessionCard({
+    required this.session,
+    required this.homeProdi,
+    required this.isFollowed,
+    required this.onTap,
+  });
+
+  final Session session;
+  final String? homeProdi;
+  final bool isFollowed;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = session;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Material(
+        color: softCardColor,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          key: Key('session-${s.id}'),
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        s.courseName,
+                        style: AppFonts.sansStyle(19, 700, color: AppColors.ink)
+                            .copyWith(
+                              decoration: s.isCancelled
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        [
+                          formatTimeRange(s.start, s.end),
+                          s.room,
+                          if (s.prodi != homeProdi) 'Prodi ${s.prodi}',
+                        ].join(' · '),
+                        style: AppFonts.sansStyle(
+                          16,
+                          400,
+                          color: const Color(0xFF3B3F55),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      StatusLine(session: s, short: true, size: 16),
+                    ],
+                  ),
+                ),
+                if (isFollowed)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 4),
+                    child: Icon(
+                      Icons.notifications_active,
+                      size: 20,
+                      color: AppColors.accent,
+                      semanticLabel: 'Diikuti',
+                    ),
+                  ),
+                const Icon(Icons.chevron_right, color: AppColors.ink),
+              ],
+            ),
+          ),
         ),
       ),
     );

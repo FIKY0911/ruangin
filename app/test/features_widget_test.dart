@@ -52,10 +52,16 @@ void main() {
     await tester.pumpAndSettle();
     await tapKey(tester, 'lecturer-l-budi');
 
-    // P02 profile (profil.png).
+    // P02 profile (Profil_Dosen.png).
     expect(find.text('Profil dosen'), findsOneWidget);
     expect(find.text('November 2026'), findsOneWidget);
-    expect(find.text('Sesi hari ini'), findsOneWidget);
+    expect(find.text('Sesi Senin, 23 Nov'), findsOneWidget);
+    expect(
+      find.byKey(const Key('nav-home')),
+      findsOneWidget,
+      reason: 'profile opens inside the Beranda tab, nav stays visible',
+    );
+    await revealIn(tester, find.text('Basis Data'));
     expect(find.text('Basis Data'), findsOneWidget);
     expect(find.text('Belum terkonfirmasi'), findsOneWidget);
 
@@ -79,9 +85,8 @@ void main() {
       findsOneWidget,
     );
     expect(backend.reports.single['reporterId'], 'u-nadia');
-    ScaffoldMessenger.of(
-      tester.element(find.byKey(const Key('report-empty'))),
-    ).hideCurrentSnackBar();
+    ScaffoldMessenger.of(tester.element(find.byKey(const Key('report-empty'))))
+        .hideCurrentSnackBar();
     await tester.pumpAndSettle();
 
     // P12 message draft.
@@ -219,8 +224,8 @@ void main() {
       find.text('Peringatan dini · cek lagi sebelum berangkat'),
       findsOneWidget,
     );
-    expect(find.text('Hasil laporan Anda'), findsOneWidget);
     expect(find.text('Laporan mahasiswa · belum dikonfirmasi'), findsOneWidget);
+    expect(find.text('Hari ini'), findsOneWidget);
     expect(backend.seen, hasLength(3), reason: 'mode uji: seen reported');
 
     await tapKey(tester, 'read-all');

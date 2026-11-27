@@ -212,7 +212,7 @@ class _Sheet extends StatelessWidget {
             ],
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 150, 0),
+            padding: const EdgeInsets.fromLTRB(20, 4, 150, 0),
             child: Text(
               '${lecturer.faculty} · Timeline gabungan semua prodi',
               style: AppFonts.sansStyle(14, 400, color: AppColors.muted),

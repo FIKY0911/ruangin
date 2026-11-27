@@ -242,17 +242,18 @@ class _DonutPainter extends CustomPainter {
       old.recorded != recorded || old.unconfirmed != unconfirmed;
 }
 
-(Color, Color, String, String) _markStyle(AttendanceMark m) => switch (m) {
+/// Background, foreground, mark (icon or text) and label per state.
+(Color, Color, Object, String) _markStyle(AttendanceMark m) => switch (m) {
   AttendanceMark.tercatat => (
     const Color(0xFFDCE8FF),
     AppColors.accent,
-    '✓',
+    Icons.check,
     'Tercatat',
   ),
   AttendanceMark.belumTerkonfirmasi => (
     const Color(0xFFFFE4E8),
     _red,
-    '?',
+    Icons.question_mark,
     'Belum terkonfirmasi',
   ),
   AttendanceMark.batal => (
@@ -349,7 +350,7 @@ class _Tile extends StatelessWidget {
               child: Column(
                 children: [
                   Text('$index', style: AppFonts.sansStyle(18, 700, color: fg)),
-                  Text(symbol, style: AppFonts.sansStyle(17, 600, color: fg)),
+                  _Mark(symbol, color: fg, size: 18),
                 ],
               ),
             ),
@@ -379,11 +380,24 @@ class _Legend extends StatelessWidget {
             color: bg,
             borderRadius: BorderRadius.circular(6),
           ),
-          child: Text(symbol, style: AppFonts.sansStyle(14, 600, color: fg)),
+          child: _Mark(symbol, color: fg, size: 15),
         ),
         const SizedBox(width: 8),
         Text(label, style: AppFonts.sansStyle(15, 400, color: AppColors.ink)),
       ],
     );
   }
+}
+
+class _Mark extends StatelessWidget {
+  const _Mark(this.mark, {required this.color, required this.size});
+
+  final Object mark;
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => mark is IconData
+      ? Icon(mark as IconData, color: color, size: size + 2)
+      : Text('$mark', style: AppFonts.sansStyle(size, 600, color: color));
 }

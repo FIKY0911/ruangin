@@ -117,6 +117,11 @@ abstract final class AppTheme {
           textStyle: AppFonts.sansStyle(17, 600),
         ),
       ),
+      // Chevron back button as in the image/ui-ux headers.
+      actionIconTheme: ActionIconThemeData(
+        backButtonIconBuilder: (_) =>
+            const Icon(Icons.arrow_back_ios_new_rounded, size: 22),
+      ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(foregroundColor: AppColors.accent),
       ),

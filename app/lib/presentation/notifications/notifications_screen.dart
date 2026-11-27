@@ -144,29 +144,39 @@ class _Header extends StatelessWidget {
       child: Row(
         children: [
           const BackButton(),
-          Flexible(
-            child: Text(
-              'Notifikasi',
-              style: AppFonts.sansStyle(28, 500, color: AppColors.ink),
+          Expanded(
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    'Notifikasi',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppFonts.sansStyle(26, 500, color: AppColors.ink),
+                  ),
+                ),
+                if (unread > 0) ...[
+                  const SizedBox(width: 10),
+                  Container(
+                    key: const Key('unread-count'),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: softBlue,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '$unread',
+                      style: AppFonts.sansStyle(16, 500, color: AppColors.ink),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
-          if (unread > 0) ...[
-            const SizedBox(width: 10),
-            Container(
-              key: const Key('unread-count'),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-              decoration: BoxDecoration(
-                color: softBlue,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                '$unread',
-                style: AppFonts.sansStyle(16, 500, color: AppColors.ink),
-              ),
-            ),
-          ],
-          const Spacer(),
-          const RuanginLogo(height: 30),
+          const RuanginLogo(height: 26),
         ],
       ),
     );

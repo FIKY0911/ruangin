@@ -54,14 +54,16 @@ Menu bawah: **Beranda · Jadwal · Laporan · Profil**.
 
 | Layar | Isinya |
 |---|---|
-| Beranda | Pencarian dosen, notifikasi, dan sesi hari ini. Dosen dan petugas melihat sesi yang bisa mereka ubah. |
-| Cari dosen | Hasil pencarian dan tampilan kalau tidak ada hasil. |
-| Profil dosen | Jadwal dosen per hari. |
-| Detail sesi | Status, riwayat, tombol ikuti, lapor ruang kosong, dan salin draf pesan ke dosen. |
+| Beranda | Logo, pencarian dosen, notifikasi, peringatan dini (kotak merah muda kalau ada), dan sesi hari ini. Dosen dan petugas melihat sesi yang bisa mereka ubah. |
+| Cari dosen | Hasil pencarian dengan gambar ilustrasi, dan tampilan "Tidak ada hasil". Menu bawah tetap terlihat. |
+| Profil dosen | Header biru, kehadiran minggu ini, pilihan hari Senin–Jumat (panah untuk ganti minggu), dan sesi di hari itu. |
+| Riwayat kehadiran | Ringkasan kehadiran minggu ini (persen tercatat) dan kotak bernomor untuk tiap sesi. Dibuka dari "Lihat riwayat" di profil dosen. |
+| Detail sesi | Status, jam, tanggal, ruang, prodi, riwayat perubahan, tombol Ikuti, lapor ruang kosong, dan salin draf pesan ke dosen. |
+| Lapor ruang kosong | Lembar konfirmasi dari bawah layar sebelum laporan dikirim. |
 | Ubah sesi | Ganti ruang, jam, batalkan sesi, atau catat kehadiran. Dosen dan petugas saja. |
 | Jadwal | Sesi yang Anda ikuti. Dosen dan petugas juga melihat "Kelola". |
 | Laporan | Untuk dosen dan petugas: daftar laporan ruang kosong untuk dikonfirmasi atau ditolak. Untuk mahasiswa: poin dan hasil laporan Anda. |
-| Notifikasi | Perubahan sesi, laporan, peringatan dini, dan hasil laporan. |
+| Notifikasi | Pilihan "Semua" atau "Belum dibaca", dikelompokkan "Hari ini" dan "Sebelumnya". |
 | Profil | Data akun dan tombol keluar. Petugas juga melihat Panel demo. |
 | Mode uji | Stopwatch untuk tugas uji pengguna. |
 

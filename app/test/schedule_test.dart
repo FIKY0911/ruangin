@@ -4,7 +4,9 @@ import 'package:ruangin/core/result.dart';
 import 'package:ruangin/core/view_state.dart';
 import 'package:ruangin/data/local/key_value_store.dart';
 import 'package:ruangin/data/models/app_notification.dart';
+import 'package:ruangin/data/models/attendance.dart';
 import 'package:ruangin/data/models/empty_room_report.dart';
+import 'package:ruangin/data/models/search_results.dart';
 import 'package:ruangin/data/models/session.dart';
 import 'package:ruangin/data/remote/api_client.dart';
 import 'package:ruangin/data/repositories/api_repositories.dart';
@@ -36,6 +38,7 @@ class Env {
   final clock = FixedClock(testNow);
 
   late final lecturers = ApiLecturerRepository(api);
+  late final search = ApiSearchRepository(api);
   late final sessions = ApiSessionRepository(api);
   late final follows = ApiFollowRepository(api);
   late final notifications = ApiNotificationRepository(api);
@@ -52,18 +55,21 @@ void main() {
   group('P01 search', () {
     test('partial, case-insensitive; empty query lists all', () async {
       final env = await Env.signedIn('u-nadia');
-      final c = LecturerSearchController(
-        env.lecturers,
+      final c = SearchResultsController(
+        env.search,
         env.clock,
         debounce: Duration.zero,
       );
       await c.load();
-      expect((c.state as ViewData<List>).data, hasLength(2));
+      expect((c.state as ViewData<SearchResults>).data.lecturers, hasLength(2));
+      expect(env.backend.requests.last.url.path, '/api/lecturers');
 
       c.onQueryChanged('  BUDI ');
       await Future<void>.delayed(const Duration(milliseconds: 10));
-      final data = (c.state as ViewData).data as List;
-      expect(data.single.name, 'Dr. Budi Santoso');
+      final data = (c.state as ViewData<SearchResults>).data;
+      expect(data.lecturers.single.name, 'Dr. Budi Santoso');
+      expect(data.sessions, isEmpty);
+      expect(env.backend.requests.last.url.path, '/api/search');
       expect(env.backend.requests.last.url.queryParameters['q'], 'BUDI');
 
       c.onQueryChanged('zaydan');
@@ -71,11 +77,23 @@ void main() {
       expect(c.state, isA<ViewEmpty>());
     });
 
+    test('finds sessions by course or room in the coming week', () async {
+      final env = await Env.signedIn('u-nadia');
+      final r = (await env.search.search('mobile')).valueOrNull!;
+      expect(r.lecturers, isEmpty);
+      expect(r.sessions.map((s) => s.id), ['s-pm-today', 's-pm-tomorrow']);
+      expect(r.sessions.first.lecturer!.name, 'Dr. Rina Kusuma, M.Kom.');
+      expect(r.sessions.first.place, 'Gedung D · Ruang 402');
+
+      final byRoom = (await env.search.search('lab')).valueOrNull!;
+      expect(byRoom.sessions.single.id, 's-basis-today');
+    });
+
     test(
       'server down: error state, then stale data after a good load',
       () async {
         final env = await Env.signedIn('u-nadia');
-        final c = LecturerSearchController(env.lecturers, env.clock);
+        final c = SearchResultsController(env.search, env.clock);
         env.backend.offline = true;
         await c.load();
         expect(c.state, isA<ViewError>());
@@ -86,6 +104,92 @@ void main() {
         expect((c.state as ViewData).isStale, isTrue);
       },
     );
+  });
+
+  group('follow lecturer', () {
+    test(
+      'follow/unfollow, isFollowed, and notifications for all sessions',
+      () async {
+        final backend = FakeBackend();
+        final nadia = await Env.signedIn('u-nadia', backend: backend);
+        expect(
+          (await nadia.lecturers.byId('l-budi')).valueOrNull!.isFollowed,
+          isFalse,
+        );
+        expect((await nadia.lecturers.follow('l-budi')).isSuccess, isTrue);
+        expect((await nadia.lecturers.follow('l-budi')).isSuccess, isTrue);
+        expect(
+          (await nadia.lecturers.byId('l-budi')).valueOrNull!.isFollowed,
+          isTrue,
+        );
+
+        // Petugas (scope Teknik Informatika) moves Budi's session.
+        final hendra = await Env.signedIn('u-hendra', backend: backend);
+        final s = (await hendra.sessions.byId('s-basis-today')).valueOrNull!;
+        expect(
+          (await hendra.sessions.changeRoom(s, 'Ruang 306')).isSuccess,
+          isTrue,
+        );
+        final page = (await nadia.notifications.list()).valueOrNull!;
+        expect(page.items.single.sessionId, 's-basis-today');
+        expect(page.retentionDays, 30);
+
+        // "Hari ini" includes the followed lecturer's session.
+        final today = (await nadia.sessions.today()).valueOrNull!;
+        expect(today.sessions.map((s) => s.id), ['s-basis-today']);
+        expect(today.sessions.single.place, 'Gedung C · Ruang 306');
+
+        expect((await nadia.lecturers.unfollow('l-budi')).isSuccess, isTrue);
+        expect(
+          (await nadia.lecturers.byId('l-budi')).valueOrNull!.isFollowed,
+          isFalse,
+        );
+        final missing = await nadia.lecturers.follow('l-tidak-ada');
+        expect((missing as Failure).failure.message, 'Data tidak ditemukan.');
+      },
+    );
+  });
+
+  group('semester attendance', () {
+    test('parses summary, courses and marks', () async {
+      final env = await Env.signedIn('u-nadia');
+      final a = (await env.lecturers.attendance('l-rina')).valueOrNull!;
+      expect(a.semester.name, 'Semester Ganjil 2026/2027');
+      expect(a.semester.startsOn, DateTime(2026, 9, 14));
+      expect(a.semester.endsOn, DateTime(2026, 12, 20));
+      // testNow 08:15: 07.30–10.00 is running, the others are later.
+      expect(a.summary.total, 3);
+      expect(a.summary.belumBerlangsung, 3);
+      expect(a.summary.counted, 0);
+      expect(a.summary.rate, isNull);
+      expect(a.courses.map((c) => c.courseName), [
+        'Analisis Sistem',
+        'Pemrograman Mobile',
+      ]);
+      final mobile = a.courses[1];
+      expect(mobile.meetings.map((m) => m.number), [1, 2]);
+      expect(mobile.meetings.first.building, 'Gedung D');
+      expect(mobile.meetings.first.mark, AttendanceMark.belumBerlangsung);
+    });
+
+    test('mark parsing never invents a value', () {
+      expect(AttendanceMark.parse('tercatat'), AttendanceMark.tercatat);
+      expect(AttendanceMark.parse('batal'), AttendanceMark.batal);
+      expect(
+        AttendanceMark.parse('tidakHadir'),
+        AttendanceMark.belumTerkonfirmasi,
+      );
+    });
+  });
+
+  group('app config', () {
+    test('reads simulatedData and retention', () async {
+      final backend = FakeBackend()..retentionDays = null;
+      final env = await Env.signedIn('u-nadia', backend: backend);
+      final c = (await ApiAppConfigRepository(env.api).load()).valueOrNull!;
+      expect(c.simulatedData, isTrue);
+      expect(c.notificationRetentionDays, isNull);
+    });
   });
 
   group('P02 timeline', () {

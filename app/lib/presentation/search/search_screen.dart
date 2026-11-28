@@ -5,8 +5,10 @@ import '../../core/brand.dart';
 import '../../core/clock.dart';
 import '../../core/view_state.dart';
 import '../../data/models/lecturer.dart';
+import '../../data/models/search_results.dart';
 import '../../data/repositories/repositories.dart';
 import '../lecturer/lecturer_profile_screen.dart';
+import '../session/session_detail_screen.dart';
 import '../theme/app_theme.dart';
 import '../widgets/async_state_view.dart';
 import '../widgets/ruangin_chrome.dart';
@@ -17,17 +19,17 @@ Future<void> openSearch(BuildContext context) =>
     Navigator.of(context)
         .push(MaterialPageRoute<void>(builder: (_) => const SearchScreen()));
 
-/// P01 — image/ui-ux/Hasil_cari1.png and Tidak_ada_Hasil.png.
+/// P01 + search by course/room — image/ui-ux/Hasil_cari1.png and
+/// Tidak_ada_Hasil.png.
 class SearchScreen extends StatelessWidget {
   const SearchScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (c) => LecturerSearchController(
-        c.read<LecturerRepository>(),
-        c.read<Clock>(),
-      )..load(),
+      create: (c) =>
+          SearchResultsController(c.read<SearchRepository>(), c.read<Clock>())
+            ..load(),
       child: const _SearchView(),
     );
   }
@@ -51,7 +53,7 @@ class _SearchViewState extends State<_SearchView> {
 
   @override
   Widget build(BuildContext context) {
-    final controller = context.watch<LecturerSearchController>();
+    final controller = context.watch<SearchResultsController>();
     final hasQuery = controller.query.trim().isNotEmpty;
     final bottom = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
@@ -75,7 +77,7 @@ class _SearchViewState extends State<_SearchView> {
                           key: const Key('search-field'),
                           controller: _text,
                           autofocus: true,
-                          hint: 'Cari nama dosen, mis. "rina"',
+                          hint: 'Cari sesi, dosen, atau mata kuliah',
                           onChanged: controller.onQueryChanged,
                           onClear: hasQuery
                               ? () {
@@ -91,7 +93,7 @@ class _SearchViewState extends State<_SearchView> {
                 SectionTitle(
                   hasQuery ? 'Hasil cari' : 'Semua dosen',
                   subtitle: switch (controller.state) {
-                    ViewData(:final data) => '${data.length} dosen ditemukan',
+                    ViewData(:final data) => resultSummary(data),
                     _ => null,
                   },
                 ),
@@ -106,22 +108,38 @@ class _SearchViewState extends State<_SearchView> {
                           image: BrandAssets.noResults,
                           title: 'Tidak ada hasil',
                           message:
-                              'Tidak ada dosen yang cocok. Coba sebagian '
-                              'nama saja.',
+                              'Tidak ada dosen, mata kuliah, atau sesi yang '
+                              'cocok.',
                         ),
                       ),
                     ),
-                    final state => AsyncStateView<List<Lecturer>>(
+                    final state => AsyncStateView<SearchResults>(
                       state: state,
                       onRetry: controller.load,
                       emptyTitle: 'Tidak ada hasil',
                       showFreshness: false,
                       // Hasil_cari1.png: results, then the illustration.
-                      builder: (context, lecturers) => ListView(
+                      builder: (context, results) => ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: EdgeInsets.only(bottom: bottom + 24),
                         children: [
-                          for (final l in lecturers) _LecturerCard(lecturer: l),
+                          if (results.sessions.isNotEmpty &&
+                              results.lecturers.isNotEmpty)
+                            const _GroupLabel('Dosen'),
+                          for (final l in results.lecturers)
+                            _LecturerCard(lecturer: l),
+                          if (results.sessions.isNotEmpty) ...[
+                            const _GroupLabel(
+                              'Mata kuliah & sesi · 7 hari ke depan',
+                              key: Key('search-sessions'),
+                            ),
+                            for (final s in results.sessions)
+                              SessionRow(
+                                session: s,
+                                showDate: true,
+                                onTap: () => openSessionDetail(context, s.id),
+                              ),
+                          ],
                           const SizedBox(height: 24),
                           const IllustrationMessage(
                             image: BrandAssets.lecturerSitting,
@@ -141,6 +159,26 @@ class _SearchViewState extends State<_SearchView> {
       ),
     );
   }
+}
+
+/// "3 dosen ditemukan" / "1 dosen · 2 sesi ditemukan".
+String resultSummary(SearchResults r) => r.sessions.isEmpty
+    ? '${r.lecturers.length} dosen ditemukan'
+    : '${r.lecturers.length} dosen · ${r.sessions.length} sesi ditemukan';
+
+class _GroupLabel extends StatelessWidget {
+  const _GroupLabel(this.text, {super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
+    child: Text(
+      text,
+      style: AppFonts.sansStyle(16, 600, color: AppColors.muted),
+    ),
+  );
 }
 
 class _LecturerCard extends StatelessWidget {

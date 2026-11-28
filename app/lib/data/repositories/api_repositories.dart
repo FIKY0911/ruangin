@@ -3,10 +3,13 @@ import 'dart:async';
 import '../../core/formatters.dart';
 import '../../core/result.dart';
 import '../models/account.dart';
+import '../models/app_config.dart';
 import '../models/app_notification.dart';
+import '../models/attendance.dart';
 import '../models/empty_room_report.dart';
 import '../models/json.dart';
 import '../models/lecturer.dart';
+import '../models/search_results.dart';
 import '../models/session.dart';
 import '../remote/api_client.dart';
 import 'repositories.dart';
@@ -111,6 +114,63 @@ class ApiLecturerRepository implements LecturerRepository {
   Future<Result<Lecturer>> byId(String id) => guard(
     () async =>
         Lecturer.fromJson(dataObject(await _api.get('/lecturers/${_seg(id)}'))),
+  );
+
+  @override
+  Future<Result<LecturerAttendance>> attendance(String lecturerId) => guard(
+    () async => LecturerAttendance.fromJson(
+      dataObject(await _api.get('/lecturers/${_seg(lecturerId)}/attendance')),
+    ),
+  );
+
+  @override
+  Future<Result<void>> follow(String lecturerId) => guard(
+    () => _api.put('/lecturers/${_seg(lecturerId)}/follow'),
+    message: 'Gagal mengikuti dosen.',
+  );
+
+  @override
+  Future<Result<void>> unfollow(String lecturerId) => guard(
+    () => _api.delete('/lecturers/${_seg(lecturerId)}/follow'),
+    message: 'Gagal berhenti mengikuti dosen.',
+  );
+}
+
+class ApiSearchRepository implements SearchRepository {
+  ApiSearchRepository(this._api);
+
+  final ApiClient _api;
+
+  @override
+  Future<Result<SearchResults>> search(String query) => guard(() async {
+    final q = query.trim();
+    if (q.isEmpty) {
+      final body = await _api.get('/lecturers');
+      return SearchResults(
+        query: '',
+        lecturers: List.unmodifiable(dataList(body).map(Lecturer.fromJson)),
+      );
+    }
+    final body =
+        await _api.get('/search', query: {'q': q}) as Map<String, dynamic>;
+    List<Map<String, dynamic>> list(String key) =>
+        (body[key] as List<dynamic>? ?? const []).cast<Map<String, dynamic>>();
+    return SearchResults(
+      query: q,
+      lecturers: List.unmodifiable(list('lecturers').map(Lecturer.fromJson)),
+      sessions: List.unmodifiable(list('sessions').map(Session.fromJson)),
+    );
+  });
+}
+
+class ApiAppConfigRepository implements AppConfigRepository {
+  ApiAppConfigRepository(this._api);
+
+  final ApiClient _api;
+
+  @override
+  Future<Result<AppConfig>> load() => guard(
+    () async => AppConfig.fromJson(dataObject(await _api.get('/app-config'))),
   );
 }
 
@@ -270,6 +330,7 @@ class ApiNotificationRepository implements NotificationRepository {
         return NotificationPage(
           List.unmodifiable(dataList(body).map(AppNotification.fromJson)),
           (body['unreadCount'] as num?)?.toInt() ?? 0,
+          retentionDays: (body['retentionDays'] as num?)?.toInt(),
         );
       });
 

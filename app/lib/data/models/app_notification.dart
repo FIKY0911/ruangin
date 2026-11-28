@@ -73,8 +73,11 @@ class AppNotification {
 /// `GET /me/notifications`: newest first + the unread badge count.
 @immutable
 class NotificationPage {
-  const NotificationPage(this.items, this.unreadCount);
+  const NotificationPage(this.items, this.unreadCount, {this.retentionDays});
 
   final List<AppNotification> items;
   final int unreadCount;
+
+  /// Notifications older than this are deleted by the server; null = kept.
+  final int? retentionDays;
 }

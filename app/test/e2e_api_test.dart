@@ -39,6 +39,8 @@ class _User {
   late final reports = ApiReportRepository(api);
   late final demo = ApiDemoRepository(api);
   late final testRuns = ApiTestRunRepository(api);
+  late final search = ApiSearchRepository(api);
+  late final appConfig = ApiAppConfigRepository(api);
 
   static Future<(_User, Account)> login(String email) async {
     final u = _User();
@@ -268,6 +270,93 @@ void main() {
       // --- Logout revokes the token ----------------------------------------
       await student.auth.logout();
       expect(await student.auth.restoreSession(), isNull);
+    },
+    skip: _url == null
+        ? 'set RUANGIN_E2E_URL to run against a live backend'
+        : false,
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
+
+  test(
+    'building, search, semester attendance, follow lecturer, app config',
+    () async {
+      final (student, _) = await _User.login('raka@demo.ruangin.id');
+      final (officer, _) = await _User.login('hendra@demo.ruangin.id');
+
+      // --- App config ("Simulasi", retention) -------------------------------
+      final config = _ok(await student.appConfig.load());
+      expect(config.simulatedData, isTrue);
+      expect(config.notificationRetentionDays, 30);
+
+      // --- Search by course / room / lecturer -------------------------------
+      final all = _ok(await student.search.search(''));
+      expect(all.lecturers.length, greaterThanOrEqualTo(6));
+      expect(all.sessions, isEmpty);
+      final byCourse = _ok(await student.search.search('pemrograman'));
+      expect(byCourse.sessions, isNotEmpty);
+      for (final s in byCourse.sessions) {
+        expect(s.courseName.toLowerCase(), contains('pemrograman'));
+        expect(s.lecturer, isNotNull);
+        expect(
+          s.building,
+          isNotNull,
+          reason: 'seeded rooms are in the catalog',
+        );
+        expect(
+          s.start.isBefore(DateTime.now().add(const Duration(days: 7))),
+          isTrue,
+        );
+      }
+      final byRoom = _ok(await student.search.search('306'));
+      expect(byRoom.sessions.every((s) => s.room.contains('306')), isTrue);
+      expect(_ok(await student.search.search('zzz-tidak-ada')).isEmpty, isTrue);
+      final byName = _ok(await student.search.search('andi'));
+      expect(byName.lecturers.map((l) => l.id), contains('l-andi'));
+
+      // --- Semester attendance ---------------------------------------------
+      final att = _ok(await student.lecturers.attendance('l-rina'));
+      expect(att.semester.name, startsWith('Semester '));
+      expect(
+        att.summary.total,
+        att.courses.fold<int>(0, (n, c) => n + c.meetings.length),
+      );
+      expect(
+        att.summary.counted,
+        att.summary.tercatat + att.summary.belumTerkonfirmasi,
+      );
+      expect(att.summary.tercatat, greaterThan(0));
+      for (final c in att.courses) {
+        expect(
+          c.meetings.map((m) => m.number),
+          List.generate(c.meetings.length, (i) => i + 1),
+        );
+      }
+      final missing = await student.lecturers.attendance('l-tidak-ada');
+      expect(
+        (missing as Failure).failure,
+        isA<ApiFailure>().having((f) => f.statusCode, 'status', 404),
+      );
+
+      // --- Follow a lecturer -----------------------------------------------
+      _ok(await student.lecturers.follow('l-andi'));
+      _ok(await student.lecturers.follow('l-andi')); // idempotent
+      expect(_ok(await student.lecturers.byId('l-andi')).isFollowed, isTrue);
+      final today = _ok(await student.sessions.today());
+      expect(today.sessions.where((s) => s.lecturerId == 'l-andi'), isNotEmpty);
+
+      // Officer moves Andi's 13.00 session: the lecturer follower is notified,
+      // and the building follows the room catalog.
+      final strukdat = _ok(await officer.sessions.byId('s-strukdat-today'));
+      final moved = _ok(
+        await officer.sessions.changeRoom(strukdat, 'Ruang 402'),
+      );
+      expect(moved.building, 'Gedung D');
+      final notes = _ok(await student.notifications.list());
+      expect(notes.retentionDays, 30);
+      expect(notes.items.map((n) => n.sessionId), contains('s-strukdat-today'));
+
+      _ok(await student.lecturers.unfollow('l-andi'));
+      expect(_ok(await student.lecturers.byId('l-andi')).isFollowed, isFalse);
     },
     skip: _url == null
         ? 'set RUANGIN_E2E_URL to run against a live backend'

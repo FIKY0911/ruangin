@@ -4,8 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/formatters.dart';
+import '../../data/models/attendance.dart';
 import '../../data/models/lecturer.dart';
-import '../../data/models/session.dart';
+import '../app_config_controller.dart';
 import '../session/session_detail_screen.dart';
 import '../theme/app_theme.dart';
 import '../widgets/async_state_view.dart';
@@ -14,8 +15,9 @@ import 'attendance_controller.dart';
 const _cardBlue = Color(0xFFF0F5FE);
 const _red = Color(0xFFB91C3C);
 
-/// image/ui-ux/riwayat_dosen.png, for the current week. Expects a
-/// [WeekAttendanceController] above it (shared with the profile screen).
+/// image/ui-ux/riwayat_dosen.png for the active semester: summary donut and
+/// one "Pertemuan 1–n" grid per course. Expects a
+/// [SemesterAttendanceController] above it (shared with the profile screen).
 class AttendanceHistoryScreen extends StatelessWidget {
   const AttendanceHistoryScreen({super.key, required this.lecturer});
 
@@ -23,7 +25,8 @@ class AttendanceHistoryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final controller = context.watch<WeekAttendanceController>();
+    final controller = context.watch<SemesterAttendanceController>();
+    final simulated = context.watch<AppConfigController>().simulatedData;
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFC),
       appBar: AppBar(
@@ -35,48 +38,76 @@ class AttendanceHistoryScreen extends StatelessWidget {
           style: AppFonts.sansStyle(22, 600, color: AppColors.ink),
         ),
       ),
-      body: AsyncStateView<WeekAttendance>(
+      body: AsyncStateView<LecturerAttendance>(
         state: controller.state,
         onRetry: controller.load,
-        emptyTitle: 'Belum ada sesi minggu ini',
+        emptyTitle: 'Belum ada sesi semester ini',
         showFreshness: false,
-        builder: (context, week) => ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.paddingOf(context).bottom + 24,
+        builder: (context, data) => RefreshIndicator(
+          onRefresh: controller.load,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.paddingOf(context).bottom + 24,
+            ),
+            children: [
+              Container(
+                color: Colors.white,
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      lecturer.name,
+                      style: AppFonts.sansStyle(30, 700, color: AppColors.ink),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      [
+                        'Semester ini',
+                        if (simulated) 'Data simulasi',
+                      ].join(' · '),
+                      key: const Key('attendance-period'),
+                      style: AppFonts.sansStyle(
+                        18,
+                        400,
+                        color: AppColors.muted,
+                      ),
+                    ),
+                    Text(
+                      '${data.semester.name} · '
+                      '${formatShortDate(data.semester.startsOn)} '
+                      '${data.semester.startsOn.year}–'
+                      '${formatShortDate(data.semester.endsOn)} '
+                      '${data.semester.endsOn.year}',
+                      style: AppFonts.sansStyle(
+                        14,
+                        400,
+                        color: AppColors.muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _SummaryCard(summary: data.summary),
+              if (data.courses.isEmpty)
+                const _Card(
+                  title: 'Belum ada sesi semester ini',
+                  child: SizedBox.shrink(),
+                ),
+              for (final c in data.courses) _CourseGrid(course: c),
+              const _LegendCard(),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                child: Text(
+                  'Sesi batal dan mendatang di luar hitungan kehadiran. '
+                  '"Belum terkonfirmasi" berarti belum ada catatan absensi, '
+                  'bukan berarti dosen tidak hadir.',
+                  style: AppFonts.sansStyle(14, 400, color: AppColors.muted),
+                ),
+              ),
+            ],
           ),
-          children: [
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    lecturer.name,
-                    style: AppFonts.sansStyle(30, 700, color: AppColors.ink),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Minggu ini · ${formatShortDate(week.monday)}–'
-                    '${formatShortDate(week.sunday)}',
-                    style: AppFonts.sansStyle(18, 400, color: AppColors.muted),
-                  ),
-                ],
-              ),
-            ),
-            _SummaryCard(week: week),
-            _SessionGrid(week: week),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-              child: Text(
-                'Sesi batal dan mendatang di luar hitungan kehadiran. '
-                '"Belum terkonfirmasi" berarti belum ada catatan absensi, '
-                'bukan berarti dosen tidak hadir.',
-                style: AppFonts.sansStyle(14, 400, color: AppColors.muted),
-              ),
-            ),
-          ],
         ),
       ),
     );
@@ -84,9 +115,10 @@ class AttendanceHistoryScreen extends StatelessWidget {
 }
 
 class _Card extends StatelessWidget {
-  const _Card({required this.title, required this.child});
+  const _Card({required this.title, required this.child, this.subtitle});
 
   final String title;
+  final String? subtitle;
   final Widget child;
 
   @override
@@ -102,6 +134,11 @@ class _Card extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(title, style: AppFonts.sansStyle(20, 700, color: AppColors.ink)),
+          if (subtitle != null)
+            Text(
+              subtitle!,
+              style: AppFonts.sansStyle(15, 400, color: AppColors.muted),
+            ),
           const SizedBox(height: 16),
           child,
         ],
@@ -111,13 +148,13 @@ class _Card extends StatelessWidget {
 }
 
 class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({required this.week});
+  const _SummaryCard({required this.summary});
 
-  final WeekAttendance week;
+  final AttendanceSummary summary;
 
   @override
   Widget build(BuildContext context) {
-    final rate = week.rate;
+    final rate = summary.rate;
     return _Card(
       title: 'Ringkasan kehadiran',
       child: Column(
@@ -128,8 +165,8 @@ class _SummaryCard extends StatelessWidget {
               height: 200,
               child: CustomPaint(
                 painter: _DonutPainter(
-                  recorded: week.recorded,
-                  unconfirmed: week.unconfirmed,
+                  recorded: summary.tercatat,
+                  unconfirmed: summary.belumTerkonfirmasi,
                 ),
                 child: Center(
                   child: Column(
@@ -163,8 +200,11 @@ class _SummaryCard extends StatelessWidget {
             spacing: 24,
             runSpacing: 8,
             children: [
-              _Dot(AppColors.accent, '${week.recorded} sesi tercatat'),
-              _Dot(_red, '${week.unconfirmed} sesi belum terkonfirmasi'),
+              _Dot(AppColors.accent, '${summary.tercatat} sesi tercatat'),
+              _Dot(
+                _red,
+                '${summary.belumTerkonfirmasi} sesi belum terkonfirmasi',
+              ),
             ],
           ),
         ],
@@ -270,78 +310,76 @@ class _DonutPainter extends CustomPainter {
   ),
 };
 
-/// Numbered tiles, one per session this week (riwayat_dosen.png
-/// "Pertemuan 1–14"). Tapping a tile opens the session.
-class _SessionGrid extends StatelessWidget {
-  const _SessionGrid({required this.week});
+/// "Pertemuan 1–n" of one course (riwayat_dosen.png). Tapping a tile opens
+/// the session.
+class _CourseGrid extends StatelessWidget {
+  const _CourseGrid({required this.course});
 
-  final WeekAttendance week;
+  final CourseAttendance course;
 
   @override
   Widget build(BuildContext context) {
-    final n = week.sessions.length;
+    final n = course.meetings.length;
     return _Card(
-      title: n == 0 ? 'Belum ada sesi minggu ini' : 'Sesi 1–$n',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          LayoutBuilder(
-            builder: (context, c) {
-              const gap = 10.0;
-              final w = (c.maxWidth - gap * 6) / 7;
-              return Wrap(
-                spacing: gap,
-                runSpacing: gap,
-                children: [
-                  for (var i = 0; i < n; i++)
-                    _Tile(
-                      index: i + 1,
-                      session: week.sessions[i],
-                      mark: week.markOf(week.sessions[i]),
-                      width: w,
-                    ),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 20),
-          Wrap(
-            spacing: 16,
-            runSpacing: 10,
-            children: [for (final m in AttendanceMark.values) _Legend(m)],
-          ),
-        ],
+      title: course.courseName,
+      subtitle: '${course.prodi} · Pertemuan 1–$n',
+      child: LayoutBuilder(
+        builder: (context, c) {
+          const gap = 10.0;
+          final w = (c.maxWidth - gap * 6) / 7;
+          return Wrap(
+            spacing: gap,
+            runSpacing: gap,
+            children: [
+              for (final m in course.meetings)
+                _Tile(meeting: m, course: course.courseName, width: w),
+            ],
+          );
+        },
       ),
     );
   }
 }
 
+class _LegendCard extends StatelessWidget {
+  const _LegendCard();
+
+  @override
+  Widget build(BuildContext context) => _Card(
+    title: 'Keterangan',
+    child: Wrap(
+      spacing: 16,
+      runSpacing: 10,
+      children: [for (final m in AttendanceMark.values) _Legend(m)],
+    ),
+  );
+}
+
 class _Tile extends StatelessWidget {
   const _Tile({
-    required this.index,
-    required this.session,
-    required this.mark,
+    required this.meeting,
+    required this.course,
     required this.width,
   });
 
-  final int index;
-  final Session session;
-  final AttendanceMark mark;
+  final AttendanceMeeting meeting;
+  final String course;
   final double width;
 
   @override
   Widget build(BuildContext context) {
-    final (bg, fg, symbol, label) = _markStyle(mark);
+    final (bg, fg, symbol, label) = _markStyle(meeting.mark);
     return Tooltip(
       message:
-          '${session.courseName} · ${formatShortDate(session.start)} · $label',
+          '$course · Pertemuan ${meeting.number} · '
+          '${formatShortDate(meeting.start)} · $label',
       child: Material(
         color: bg,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
-          key: Key('attendance-${session.id}'),
+          key: Key('attendance-${meeting.sessionId}'),
           borderRadius: BorderRadius.circular(12),
-          onTap: () => openSessionDetail(context, session.id),
+          onTap: () => openSessionDetail(context, meeting.sessionId),
           child: SizedBox(
             width: width,
             height: width * 1.15,
@@ -349,7 +387,10 @@ class _Tile extends StatelessWidget {
               fit: BoxFit.scaleDown,
               child: Column(
                 children: [
-                  Text('$index', style: AppFonts.sansStyle(18, 700, color: fg)),
+                  Text(
+                    '${meeting.number}',
+                    style: AppFonts.sansStyle(18, 700, color: fg),
+                  ),
                   _Mark(symbol, color: fg, size: 18),
                 ],
               ),

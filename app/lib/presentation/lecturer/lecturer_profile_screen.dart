@@ -8,6 +8,7 @@ import '../../core/view_state.dart';
 import '../../data/models/lecturer.dart';
 import '../../data/models/session.dart';
 import '../../data/repositories/repositories.dart';
+import '../app_config_controller.dart';
 import '../session/follow_controller.dart';
 import '../session/session_detail_screen.dart';
 import '../theme/app_theme.dart';
@@ -24,8 +25,9 @@ Future<void> openLecturer(BuildContext context, String lecturerId) =>
       ),
     );
 
-/// P02 — image/ui-ux/Profil_Dosen.png: blue header, attendance summary for
-/// this week, week strip and the selected day's sessions across all prodi.
+/// P02 — image/ui-ux/Profil_Dosen.png: blue header, "Ikuti" (follow the
+/// lecturer), attendance summary for the semester, week strip and the
+/// selected day's sessions across all prodi.
 class LecturerProfileScreen extends StatelessWidget {
   const LecturerProfileScreen({super.key, required this.lecturerId});
 
@@ -50,8 +52,8 @@ class LecturerProfileScreen extends StatelessWidget {
           )..load(),
         ),
         ChangeNotifierProvider(
-          create: (c) => WeekAttendanceController(
-            c.read<SessionRepository>(),
+          create: (c) => SemesterAttendanceController(
+            c.read<LecturerRepository>(),
             lecturerId,
             c.read<Clock>(),
           )..load(),
@@ -169,7 +171,8 @@ class _Sheet extends StatelessWidget {
       onRefresh: () async {
         await Future.wait([
           context.read<TimelineController>().load(),
-          context.read<WeekAttendanceController>().load(),
+          context.read<SemesterAttendanceController>().load(),
+          context.read<LecturerController>().load(),
         ]);
       },
       child: ListView(
@@ -218,6 +221,7 @@ class _Sheet extends StatelessWidget {
               style: AppFonts.sansStyle(14, 400, color: AppColors.muted),
             ),
           ),
+          const _FollowLecturerButton(),
           const _AttendanceSummary(),
           const _WeekPicker(),
           const _Timeline(),
@@ -256,18 +260,75 @@ class _SquareAvatar extends StatelessWidget {
   );
 }
 
-/// "Kehadiran minggu ini · Tercatat di X dari Y sesi" + "Lihat riwayat".
+/// Outlined "Ikuti" / "Diikuti" (Profil_Dosen.png): follow every session of
+/// this lecturer.
+class _FollowLecturerButton extends StatelessWidget {
+  const _FollowLecturerButton();
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = context.watch<LecturerController>();
+    final lecturer = controller.value!;
+    final following = lecturer.isFollowed;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 150, 0),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton(
+          key: const Key('follow-lecturer'),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(140, 44),
+            foregroundColor: following ? Colors.white : AppColors.accent,
+            backgroundColor: following ? AppColors.accent : Colors.white,
+            side: const BorderSide(color: AppColors.accent, width: 1.6),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+          onPressed: controller.isTogglingFollow
+              ? null
+              : () async {
+                  final follows = context.read<FollowController>();
+                  final msg = await controller.toggleFollow();
+                  // "Sesi hari ini" on Beranda includes followed lecturers.
+                  await follows.reload();
+                  if (context.mounted && msg.isNotEmpty) {
+                    showSnack(context, msg);
+                  }
+                },
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (following) ...[
+                const Icon(Icons.check, size: 20),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                following ? 'Diikuti' : 'Ikuti',
+                style: AppFonts.sansStyle(17, 700),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// "Kehadiran semester ini · Tercatat di X dari Y sesi" + "Lihat riwayat".
 class _AttendanceSummary extends StatelessWidget {
   const _AttendanceSummary();
 
   @override
   Widget build(BuildContext context) {
-    final controller = context.watch<WeekAttendanceController>();
+    final controller = context.watch<SemesterAttendanceController>();
     final lecturer = context.read<LecturerController>().value!;
-    final summary = switch (controller.state) {
+    final simulated = context.watch<AppConfigController>().simulatedData;
+    final data = switch (controller.state) {
       ViewData(:final data) => data,
       _ => null,
     };
+    final summary = data?.summary;
     final ink = AppFonts.sansStyle(19, 400, color: AppColors.ink);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 18, 8, 0),
@@ -279,15 +340,16 @@ class _AttendanceSummary extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Kehadiran minggu ini',
+                  'Kehadiran semester ini',
                   style: AppFonts.sansStyle(17, 700, color: AppColors.ink),
                 ),
                 const SizedBox(height: 4),
                 switch (controller.state) {
                   ViewLoading() => Text('Memuat…', style: ink),
-                  ViewError() => Text(
-                    'Gagal memuat',
-                    style: ink.copyWith(color: AppColors.muted),
+                  ViewError(:final message) => Text(
+                    message,
+                    key: const Key('attendance-summary'),
+                    style: ink.copyWith(color: AppColors.muted, fontSize: 16),
                   ),
                   _ =>
                     summary == null || summary.counted == 0
@@ -303,7 +365,7 @@ class _AttendanceSummary extends StatelessWidget {
                               children: [
                                 TextSpan(
                                   text:
-                                      '${summary.recorded} dari '
+                                      '${summary.tercatat} dari '
                                       '${summary.counted} sesi',
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w700,
@@ -316,7 +378,11 @@ class _AttendanceSummary extends StatelessWidget {
                 },
                 const SizedBox(height: 2),
                 Text(
-                  'Sesi yang sudah lewat, tanpa sesi batal',
+                  [
+                    data?.semester.name ?? 'Sesi yang sudah lewat',
+                    if (simulated) 'Data simulasi',
+                  ].join(' · '),
+                  key: const Key('attendance-caption'),
                   style: AppFonts.sansStyle(13, 400, color: AppColors.muted),
                 ),
               ],
@@ -629,7 +695,7 @@ class _SessionCard extends StatelessWidget {
                       Text(
                         [
                           formatTimeRange(s.start, s.end),
-                          s.room,
+                          s.place,
                           if (s.prodi != homeProdi) 'Prodi ${s.prodi}',
                         ].join(' · '),
                         style: AppFonts.sansStyle(

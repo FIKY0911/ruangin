@@ -49,6 +49,10 @@ abstract class AsyncController<T> extends ChangeNotifier {
   ViewState<T> get state => _state;
   T? get value => _last;
 
+  /// True after [dispose]; async work must not notify any more.
+  @protected
+  bool get isDisposed => _disposed;
+
   @protected
   Future<Result<T>> fetch();
 
@@ -73,6 +77,15 @@ abstract class AsyncController<T> extends ChangeNotifier {
           _set(ViewError(failure.message));
         }
     }
+  }
+
+  /// Replaces the shown value after a local change the server confirmed.
+  @protected
+  void replaceValue(T value) {
+    if (_disposed) return;
+    _last = value;
+    _lastAt = clock.now();
+    _set(isEmpty(value) ? ViewEmpty(_lastAt!) : ViewData(value, _lastAt!));
   }
 
   /// Forget cached data (e.g. when the query changes).

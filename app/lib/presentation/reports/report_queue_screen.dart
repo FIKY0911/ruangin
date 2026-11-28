@@ -192,7 +192,7 @@ class _ReportCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               '${formatShortDate(s.start)} · ${formatTimeRange(s.start, s.end)} · '
-              '${s.room}',
+              '${s.place}',
               style: AppFonts.sansStyle(14, 400, color: AppColors.muted),
             ),
             if (s.lecturer != null)

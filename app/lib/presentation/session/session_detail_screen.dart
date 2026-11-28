@@ -137,9 +137,17 @@ class _DetailBody extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        Text(
-          '${s.attendance?.source ?? s.source} · ${formatTime(statusTime)}',
-          style: AppFonts.sansStyle(15, 400, color: AppColors.muted),
+        Wrap(
+          spacing: 12,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              '${s.attendance?.source ?? s.source} · ${formatTime(statusTime)}',
+              style: AppFonts.sansStyle(15, 400, color: AppColors.muted),
+            ),
+            const SimulatedChip(),
+          ],
         ),
         const SizedBox(height: 4),
         Text(
@@ -207,7 +215,7 @@ class _DetailBody extends StatelessWidget {
   }
 }
 
-/// 2×2 card: Jam · Tanggal / Ruang · Program studi.
+/// 2×2 card: Jam (+ date) · Gedung / Ruang · Program studi.
 class _InfoGrid extends StatelessWidget {
   const _InfoGrid({required this.session});
 
@@ -216,27 +224,37 @@ class _InfoGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = session;
-    Widget cell(IconData icon, String label, String value, {Key? key}) =>
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 16, 12, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(icon, size: 28, color: AppColors.muted),
-              const SizedBox(height: 8),
-              Text(
-                label,
-                style: AppFonts.sansStyle(15, 400, color: AppColors.muted),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                value,
-                key: key,
-                style: AppFonts.sansStyle(19, 700, color: AppColors.ink),
-              ),
-            ],
+    Widget cell(
+      IconData icon,
+      String label,
+      String value, {
+      Key? key,
+      String? note,
+    }) => Padding(
+      padding: const EdgeInsets.fromLTRB(18, 16, 12, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 28, color: AppColors.muted),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: AppFonts.sansStyle(15, 400, color: AppColors.muted),
           ),
-        );
+          const SizedBox(height: 2),
+          Text(
+            value,
+            key: key,
+            style: AppFonts.sansStyle(19, 700, color: AppColors.ink),
+          ),
+          if (note != null)
+            Text(
+              note,
+              style: AppFonts.sansStyle(14, 400, color: AppColors.muted),
+            ),
+        ],
+      ),
+    );
     return Container(
       decoration: BoxDecoration(
         color: softCardColor,
@@ -253,14 +271,16 @@ class _InfoGrid extends StatelessWidget {
                     Icons.schedule,
                     'Jam',
                     formatTimeRange(s.start, s.end),
+                    note: formatDate(s.start),
                   ),
                 ),
                 const VerticalDivider(width: 1, color: Color(0xFFDADCE3)),
                 Expanded(
                   child: cell(
-                    Icons.event_outlined,
-                    'Tanggal',
-                    formatShortDate(s.start),
+                    Icons.apartment_outlined,
+                    'Gedung',
+                    s.building ?? '–',
+                    key: const Key('detail-building'),
                   ),
                 ),
               ],

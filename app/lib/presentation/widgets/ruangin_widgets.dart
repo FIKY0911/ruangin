@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/formatters.dart';
 import '../../data/models/session.dart';
 import '../../domain/session_status.dart';
+import '../app_config_controller.dart';
 import '../theme/app_theme.dart';
 
 /// Building blocks for the screens in image/ui-ux/*.png.
@@ -341,7 +343,7 @@ class SessionCard extends StatelessWidget {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        '${formatTimeRange(s.start, s.end)} · ${s.room}',
+                        '${formatTimeRange(s.start, s.end)} · ${s.place}',
                         style: AppFonts.sansStyle(
                           15,
                           400,
@@ -440,7 +442,7 @@ class SessionRow extends StatelessWidget {
                   Text(
                     [
                       if (showDate) formatShortDate(s.start),
-                      s.room,
+                      s.place,
                       'Prodi ${s.prodi}',
                     ].join(' · '),
                     style: AppFonts.sansStyle(14, 400, color: AppColors.muted),
@@ -503,4 +505,53 @@ void showSnack(BuildContext context, String message) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: Text(message)));
+}
+
+/// "Simulasi" chip (beranda, detail_sesi, notifikasi designs). Shown only
+/// while the server reports that all schedules and attendance are synthetic
+/// / simulated (`GET /app-config` simulatedData, PRD §10 "tandai data
+/// sintetis"). [text] lets a screen say "Data simulasi" in running text.
+class SimulatedChip extends StatelessWidget {
+  const SimulatedChip({super.key, this.plain = false, this.text = 'Simulasi'});
+
+  /// Italic text without the grey pill (notification footer).
+  final bool plain;
+  final String text;
+
+  static const tooltip =
+      'Data simulasi: jadwal dan catatan absensi di Ruangin saat ini '
+      'adalah data contoh, bukan data kampus asli.';
+
+  @override
+  Widget build(BuildContext context) {
+    if (!context.watch<AppConfigController>().simulatedData) {
+      return const SizedBox.shrink();
+    }
+    final label = plain
+        ? Text(
+            text,
+            style: AppFonts.sansStyle(
+              14,
+              400,
+              color: AppColors.ink,
+            ).copyWith(fontStyle: FontStyle.italic),
+          )
+        : Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE9EAEE),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              text,
+              style: AppFonts.sansStyle(14, 500, color: AppColors.ink),
+            ),
+          );
+    return Tooltip(
+      key: const Key('simulated-chip'),
+      message: tooltip,
+      triggerMode: TooltipTriggerMode.tap,
+      child: label,
+    );
+  }
 }

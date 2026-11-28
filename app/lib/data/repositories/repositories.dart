@@ -1,8 +1,11 @@
 import '../../core/result.dart';
 import '../models/account.dart';
+import '../models/app_config.dart';
 import '../models/app_notification.dart';
+import '../models/attendance.dart';
 import '../models/empty_room_report.dart';
 import '../models/lecturer.dart';
+import '../models/search_results.dart';
 import '../models/session.dart';
 
 /// Repository ports. The UI depends only on these interfaces; the live
@@ -36,6 +39,27 @@ abstract interface class LecturerRepository {
   /// An empty query returns all lecturers.
   Future<Result<List<Lecturer>>> search(String query);
   Future<Result<Lecturer>> byId(String id);
+
+  /// `GET /lecturers/{id}/attendance`: the active semester, per course.
+  Future<Result<LecturerAttendance>> attendance(String lecturerId);
+
+  /// Follow a lecturer (all of their sessions). Idempotent.
+  Future<Result<void>> follow(String lecturerId);
+
+  /// Idempotent.
+  Future<Result<void>> unfollow(String lecturerId);
+}
+
+abstract interface class SearchRepository {
+  /// "Cari sesi, dosen, atau mata kuliah". A blank query lists all lecturers
+  /// (no sessions); otherwise `GET /search?q=` (sessions of the coming week
+  /// whose course or room matches).
+  Future<Result<SearchResults>> search(String query);
+}
+
+abstract interface class AppConfigRepository {
+  /// `GET /app-config`.
+  Future<Result<AppConfig>> load();
 }
 
 abstract interface class SessionRepository {

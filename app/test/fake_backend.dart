@@ -23,6 +23,31 @@ class FakeBackend {
   final lecturers = <String, Map<String, dynamic>>{};
   final sessions = <String, Map<String, dynamic>>{};
   final follows = <String, Set<String>>{}; // userId -> sessionIds
+  final lecturerFollows = <String, Set<String>>{}; // userId -> lecturerIds
+
+  /// Room catalog (backend `rooms`): building per room.
+  final rooms = <String, String>{
+    'Ruang 402': 'Gedung D',
+    'Ruang 306': 'Gedung C',
+    'Lab 2': 'Gedung C',
+  };
+
+  /// `GET /app-config`.
+  bool simulatedData = true;
+  int? retentionDays = 30;
+
+  /// Active semester (backend `semesters`): 14 weeks, [now] in week 11.
+  late final DateTime semesterStart = DateTime(
+    now.year,
+    now.month,
+    now.day - (now.weekday - 1) - 70,
+  );
+  late final DateTime semesterEnd = DateTime(
+    semesterStart.year,
+    semesterStart.month,
+    semesterStart.day + 14 * 7 - 1,
+  );
+  bool hasActiveSemester = true;
   final notifications = <Map<String, dynamic>>[];
   final reports = <Map<String, dynamic>>[];
   final seen = <String>{};
@@ -211,6 +236,98 @@ class FakeBackend {
     if (withSession) 'reporterName': users[r['reporterId']]?['name'],
   };
 
+  Map<String, dynamic> lecturerJson(
+    Map<String, dynamic> l,
+    Map<String, dynamic>? u,
+  ) => {
+    ...l,
+    'isFollowed': lecturerFollows[u?['id']]?.contains(l['id']) ?? false,
+  };
+
+  String _mark(Map<String, dynamic> s) {
+    if (s['isCancelled'] == true) return 'batal';
+    if (s['attendance'] != null) return 'tercatat';
+    if ((s['end'] as DateTime).isAfter(now)) return 'belumBerlangsung';
+    return 'belumTerkonfirmasi';
+  }
+
+  Map<String, dynamic> _summary(List<String> marks) {
+    int c(String m) => marks.where((x) => x == m).length;
+    final counted = c('tercatat') + c('belumTerkonfirmasi');
+    return {
+      'total': marks.length,
+      'tercatat': c('tercatat'),
+      'belumTerkonfirmasi': c('belumTerkonfirmasi'),
+      'batal': c('batal'),
+      'belumBerlangsung': c('belumBerlangsung'),
+      'counted': counted,
+      'rate': counted == 0 ? null : c('tercatat') / counted,
+    };
+  }
+
+  Map<String, dynamic> attendanceJson(
+    Map<String, dynamic> l,
+    Map<String, dynamic> u,
+  ) {
+    final end = DateTime(
+      semesterEnd.year,
+      semesterEnd.month,
+      semesterEnd.day + 1,
+    );
+    final list =
+        sessions.values
+            .where(
+              (s) =>
+                  s['lecturerId'] == l['id'] &&
+                  !(s['start'] as DateTime).isBefore(semesterStart) &&
+                  (s['start'] as DateTime).isBefore(end),
+            )
+            .toList()
+          ..sort(
+            (a, b) =>
+                (a['start'] as DateTime).compareTo(b['start'] as DateTime),
+          );
+    final byCourse = <String, List<Map<String, dynamic>>>{};
+    for (final s in list) {
+      (byCourse['${s['courseName']}\n${s['prodi']}'] ??= []).add(s);
+    }
+    final keys = byCourse.keys.toList()..sort();
+    return {
+      'lecturer': lecturerJson(l, u),
+      'semester': {
+        'id': 'sem-test',
+        'name': 'Semester Ganjil 2026/2027',
+        'startsOn': isoDay(semesterStart),
+        'endsOn': isoDay(semesterEnd),
+      },
+      'summary': _summary([for (final s in list) _mark(s)]),
+      'courses': [
+        for (final k in keys)
+          {
+            'courseName': byCourse[k]!.first['courseName'],
+            'prodi': byCourse[k]!.first['prodi'],
+            'summary': _summary([for (final s in byCourse[k]!) _mark(s)]),
+            'meetings': [
+              for (var i = 0; i < byCourse[k]!.length; i++)
+                {
+                  'number': i + 1,
+                  'sessionId': byCourse[k]![i]['id'],
+                  'start': _iso(byCourse[k]![i]['start'] as DateTime),
+                  'end': _iso(byCourse[k]![i]['end'] as DateTime),
+                  'room': byCourse[k]![i]['room'],
+                  'building': rooms[byCourse[k]![i]['room']],
+                  'status': _mark(byCourse[k]![i]),
+                },
+            ],
+          },
+      ],
+    };
+  }
+
+  static String isoDay(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
   Map<String, dynamic> sessionJson(
     Map<String, dynamic> s,
     Map<String, dynamic>? u, {
@@ -227,12 +344,14 @@ class FakeBackend {
     return {
       'id': s['id'],
       'lecturerId': s['lecturerId'],
-      if (withLecturer || detail) 'lecturer': lecturers[s['lecturerId']],
+      if (withLecturer || detail)
+        'lecturer': lecturerJson(lecturers[s['lecturerId']]!, u),
       'courseName': s['courseName'],
       'prodi': s['prodi'],
       'start': _iso(s['start'] as DateTime),
       'end': _iso(s['end'] as DateTime),
       'room': s['room'],
+      'building': rooms[s['room']],
       'source': s['source'],
       'updatedAt': _iso(s['updatedAt'] as DateTime),
       'isCancelled': s['isCancelled'],
@@ -289,10 +408,14 @@ class FakeBackend {
     String kind,
     String title,
   ) {
-    for (final e in follows.entries) {
-      if (e.key != exceptUserId && e.value.contains(s['id'])) {
-        notify(e.key, s['id'] as String, kind, title);
-      }
+    final ids = {
+      for (final e in follows.entries)
+        if (e.value.contains(s['id'])) e.key,
+      for (final e in lecturerFollows.entries)
+        if (e.value.contains(s['lecturerId'])) e.key,
+    }..remove(exceptUserId);
+    for (final id in ids) {
+      notify(id, s['id'] as String, kind, title);
     }
   }
 
@@ -393,7 +516,89 @@ class FakeBackend {
       return http.Response('', 204);
     }
 
+    if (m == 'GET' && path == '/app-config') {
+      return _json({
+        'data': {
+          'simulatedData': simulatedData,
+          'notificationRetentionDays': retentionDays,
+        },
+      });
+    }
+
+    if (m == 'GET' && path == '/search') {
+      final query = (q['q'] ?? '').trim().toLowerCase();
+      if (query.isEmpty) {
+        return _error(422, 'invalidInput', 'Periksa kembali isian formulir.', {
+          'q': ['Kata kunci wajib diisi.'],
+        });
+      }
+      final from = DateTime(now.year, now.month, now.day);
+      final to = DateTime(now.year, now.month, now.day + 7);
+      final ls =
+          lecturers.values
+              .where((l) => (l['name'] as String).toLowerCase().contains(query))
+              .toList()
+            ..sort(
+              (a, b) => (a['name'] as String).compareTo(b['name'] as String),
+            );
+      final ss =
+          sessions.values
+              .where(
+                (s) =>
+                    !(s['start'] as DateTime).isBefore(from) &&
+                    (s['start'] as DateTime).isBefore(to) &&
+                    ((s['courseName'] as String).toLowerCase().contains(
+                          query,
+                        ) ||
+                        (s['room'] as String).toLowerCase().contains(query)),
+              )
+              .toList()
+            ..sort(
+              (a, b) =>
+                  (a['start'] as DateTime).compareTo(b['start'] as DateTime),
+            );
+      return _json({
+        'query': q['q']!.trim(),
+        'lecturers': [for (final l in ls) lecturerJson(l, u)],
+        'sessions': [for (final s in ss) sessionJson(s, u, withLecturer: true)],
+        'from': isoDay(from),
+        'to': isoDay(to.subtract(const Duration(days: 1))),
+      });
+    }
+
+    if (seg.first == 'lecturers' && seg.length == 3 && seg[2] == 'follow') {
+      if (m == 'PUT') {
+        if (lecturers[seg[1]] == null) {
+          return _error(404, 'notFound', 'Data tidak ditemukan.');
+        }
+        (lecturerFollows[uid] ??= {}).add(seg[1]);
+      } else if (m == 'DELETE') {
+        lecturerFollows[uid]?.remove(seg[1]);
+      }
+      return _json({'lecturerId': seg[1], 'isFollowed': m == 'PUT'});
+    }
+
+    if (m == 'GET' && path == '/me/followed-lecturers') {
+      final list =
+          (lecturerFollows[uid] ?? {}).map((id) => lecturers[id]!).toList()
+            ..sort(
+              (a, b) => (a['name'] as String).compareTo(b['name'] as String),
+            );
+      return _json({
+        'data': [for (final l in list) lecturerJson(l, u)],
+        'lecturerIds': [for (final l in list) l['id']],
+      });
+    }
+
     if (m == 'GET' && seg.first == 'lecturers') {
+      if (seg.length == 3 && seg[2] == 'attendance') {
+        final l = lecturers[seg[1]];
+        if (l == null) return _error(404, 'notFound', 'Data tidak ditemukan.');
+        if (!hasActiveSemester) {
+          return _error(404, 'notFound', 'Belum ada semester aktif.');
+        }
+        return _json({'data': attendanceJson(l, u)});
+      }
       if (seg.length == 1) {
         final query = (q['q'] ?? '').toLowerCase();
         final list =
@@ -405,11 +610,13 @@ class FakeBackend {
               ..sort(
                 (a, b) => (a['name'] as String).compareTo(b['name'] as String),
               );
-        return _json({'data': list});
+        return _json({
+          'data': [for (final l in list) lecturerJson(l, u)],
+        });
       }
       final l = lecturers[seg[1]];
       if (l == null) return _error(404, 'notFound', 'Data tidak ditemukan.');
-      if (seg.length == 2) return _json({'data': l});
+      if (seg.length == 2) return _json({'data': lecturerJson(l, u)});
       final date = _date(q['date']);
       final list =
           sessions.values
@@ -425,7 +632,7 @@ class FakeBackend {
             );
       return _json({
         'data': [for (final s in list) sessionJson(s, u)],
-        'lecturer': l,
+        'lecturer': lecturerJson(l, u),
       });
     }
 
@@ -564,8 +771,12 @@ class FakeBackend {
 
     if (m == 'GET' && path == '/me/today') {
       final list =
-          (follows[uid] ?? {})
-              .map((id) => sessions[id]!)
+          sessions.values
+              .where(
+                (s) =>
+                    (follows[uid]?.contains(s['id']) ?? false) ||
+                    (lecturerFollows[uid]?.contains(s['lecturerId']) ?? false),
+              )
               .where((s) => _sameDay(s['start'] as DateTime, now))
               .toList()
             ..sort(
@@ -602,6 +813,7 @@ class FakeBackend {
             }..remove('read'),
         ],
         'unreadCount': _mine(uid).where((n) => n['read'] != true).length,
+        'retentionDays': retentionDays,
       });
     }
     if (path == '/me/notifications/read-all') {

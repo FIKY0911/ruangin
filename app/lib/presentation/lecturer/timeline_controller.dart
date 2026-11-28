@@ -10,15 +10,46 @@ class LecturerController extends AsyncController<Lecturer> {
 
   final LecturerRepository _repo;
   final String lecturerId;
+  bool _following = false;
+
+  /// A follow/unfollow request is in flight.
+  bool get isTogglingFollow => _following;
 
   @override
   Future<Result<Lecturer>> fetch() => _repo.byId(lecturerId);
+
+  /// "Ikuti" / "Diikuti" on Profil_Dosen.png. Returns a user-facing message.
+  Future<String> toggleFollow() async {
+    final current = value;
+    if (current == null || _following) return '';
+    _following = true;
+    notifyListeners();
+    final follow = !current.isFollowed;
+    final result = follow
+        ? await _repo.follow(current.id)
+        : await _repo.unfollow(current.id);
+    _following = false;
+    if (isDisposed) return '';
+    switch (result) {
+      case Success():
+        // Show the new state right away, then confirm with the server.
+        replaceValue(current.copyWith(isFollowed: follow));
+        await load();
+        return follow
+            ? 'Mengikuti ${current.name}. Anda akan dapat kabar untuk semua '
+                  'sesinya.'
+            : 'Berhenti mengikuti ${current.name}.';
+      case Failure(:final failure):
+        notifyListeners();
+        return failure.message;
+    }
+  }
 }
 
 /// P02: timeline of one lecturer for a selected date (all prodi, by time).
 class TimelineController extends AsyncController<List<Session>> {
   TimelineController(this._repo, this.lecturerId, super.clock)
-      : _date = dateOnly(clock.now());
+    : _date = dateOnly(clock.now());
 
   final SessionRepository _repo;
   final String lecturerId;

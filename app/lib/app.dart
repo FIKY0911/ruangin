@@ -11,6 +11,7 @@ import 'data/remote/api_client.dart';
 import 'data/repositories/api_repositories.dart';
 import 'data/repositories/repositories.dart';
 import 'domain/auth_service.dart';
+import 'presentation/app_config_controller.dart';
 import 'presentation/auth/auth_controller.dart';
 import 'presentation/auth/welcome_screen.dart';
 import 'presentation/home_shell.dart';
@@ -47,6 +48,8 @@ List<SingleChildWidget> buildDependencies({
       },
     ),
     Provider<LecturerRepository>.value(value: ApiLecturerRepository(api)),
+    Provider<SearchRepository>.value(value: ApiSearchRepository(api)),
+    Provider<AppConfigRepository>.value(value: ApiAppConfigRepository(api)),
     Provider<SessionRepository>.value(
       value: ApiSessionRepository(api, onChanged: notifications.notifyChanged),
     ),
@@ -60,6 +63,13 @@ List<SingleChildWidget> buildDependencies({
     ChangeNotifierProvider<FollowController>(
       create: (c) => FollowController(
         c.read<FollowRepository>(),
+        c.read<AuthController>(),
+      ),
+    ),
+    ChangeNotifierProvider<AppConfigController>(
+      lazy: false,
+      create: (c) => AppConfigController(
+        c.read<AppConfigRepository>(),
         c.read<AuthController>(),
       ),
     ),

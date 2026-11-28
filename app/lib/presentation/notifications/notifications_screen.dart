@@ -26,10 +26,15 @@ class NotificationsController extends AsyncController<List<AppNotification>> {
 
   int get unreadCount => value?.where((n) => !n.isRead).length ?? 0;
 
+  /// "Notifikasi otomatis dihapus setelah N hari" (from the server); null =
+  /// notifications are kept, so no note is shown.
+  int? retentionDays;
+
   @override
   Future<Result<List<AppNotification>>> fetch() async {
     final r = await _repo.list();
     if (r case Success(:final value)) {
+      retentionDays = value.retentionDays;
       // Mode uji: tell the server which notifications are now on screen.
       final fresh = [
         for (final n in value.items)
@@ -315,9 +320,38 @@ class _GroupedList extends StatelessWidget {
           ),
         if (today.isNotEmpty) ...[heading('Hari ini'), group(today)],
         if (earlier.isNotEmpty) ...[heading('Sebelumnya'), group(earlier)],
+        if (controller.retentionDays case final days?)
+          _RetentionNote(days: days),
       ],
     );
   }
+}
+
+/// notifikasi_revisi.png footer: "ⓘ Notifikasi otomatis dihapus setelah 30
+/// hari." with the "Simulasi" label.
+class _RetentionNote extends StatelessWidget {
+  const _RetentionNote({required this.days});
+
+  final int days;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    key: const Key('retention-note'),
+    padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
+    child: Row(
+      children: [
+        const Icon(Icons.info_outline, size: 20, color: AppColors.muted),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'Notifikasi otomatis dihapus setelah $days hari.',
+            style: AppFonts.sansStyle(14, 400, color: AppColors.ink),
+          ),
+        ),
+        const SimulatedChip(plain: true),
+      ],
+    ),
+  );
 }
 
 /// Icon per kind, plus the caveat label for kinds that are not an official

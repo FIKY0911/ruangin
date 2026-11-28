@@ -53,6 +53,7 @@ class Session {
     required this.room,
     required this.source,
     required this.updatedAt,
+    this.building,
     this.isCancelled = false,
     this.attendance,
     this.history = const [],
@@ -73,6 +74,13 @@ class Session {
   final DateTime start;
   final DateTime end;
   final String room;
+
+  /// Building ("Gedung") of [room] from the server's room catalog; null when
+  /// the room is not in the catalog.
+  final String? building;
+
+  /// "Gedung C · Ruang 306", or just the room when the building is unknown.
+  String get place => building == null ? room : '$building · $room';
 
   /// Where the latest information came from.
   final String source;
@@ -111,6 +119,7 @@ class Session {
     start: parseApiDate(json['start']),
     end: parseApiDate(json['end']),
     room: json['room'] as String,
+    building: _nonEmpty(json['building']),
     source: json['source'] as String? ?? '',
     updatedAt: parseApiDate(json['updatedAt']),
     isCancelled: json['isCancelled'] as bool? ?? false,
@@ -134,6 +143,9 @@ class Session {
         : null,
   );
 }
+
+String? _nonEmpty(Object? raw) =>
+    raw is String && raw.trim().isNotEmpty ? raw : null;
 
 /// `GET /me/today`: followed sessions today + badge/points for Beranda.
 @immutable

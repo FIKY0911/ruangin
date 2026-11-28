@@ -189,7 +189,7 @@ class _HomeView extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
                   child: SearchPill(
                     key: const Key('home-search'),
-                    hint: 'Cari nama dosen',
+                    hint: 'Cari sesi, dosen, atau mata kuliah',
                     radius: 14,
                     onTap: () => openSearch(context),
                   ),
@@ -247,12 +247,28 @@ class _HomeView extends StatelessWidget {
                               }
                             },
                           ),
-                        SectionTitle(
-                          'Sesi hari ini',
-                          padding: const EdgeInsets.fromLTRB(20, 18, 20, 6),
-                          subtitle: account.isEditor
-                              ? 'Sesi yang bisa Anda kelola'
-                              : 'Sesi yang Anda ikuti',
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: SectionTitle(
+                                'Sesi hari ini',
+                                padding: const EdgeInsets.fromLTRB(
+                                  20,
+                                  18,
+                                  12,
+                                  6,
+                                ),
+                                subtitle: account.isEditor
+                                    ? 'Sesi yang bisa Anda kelola'
+                                    : 'Sesi dan dosen yang Anda ikuti',
+                              ),
+                            ),
+                            const Padding(
+                              padding: EdgeInsets.fromLTRB(0, 24, 16, 0),
+                              child: SimulatedChip(),
+                            ),
+                          ],
                         ),
                         _TodayList(controller: controller, account: account),
                       ],
@@ -348,7 +364,8 @@ class _TodayList extends StatelessWidget {
               : 'Belum ada sesi diikuti hari ini',
           message: account.isEditor
               ? 'Lihat tanggal lain di tab Jadwal.'
-              : 'Cari dosen, buka sesinya, lalu ketuk "Ikuti sesi".',
+              : 'Cari dosen atau mata kuliah, lalu ketuk "Ikuti" di sesi '
+                    'atau di profil dosen.',
           actionLabel: account.isEditor ? null : 'Cari dosen',
           onAction: account.isEditor ? null : () async => openSearch(context),
         );

@@ -69,7 +69,7 @@ Menu bawah: **Beranda · Jadwal · Laporan · Profil**.
 
 Label "Simulasi" / "Data simulasi" muncul selama server melaporkan bahwa semua jadwal dan absensi adalah data contoh (`GET /app-config`, `simulatedData`). Sebelum jawaban server datang, atau kalau permintaan gagal, label tetap tampil. Aplikasi mencoba lagi saat Beranda ditarik untuk dimuat ulang dan saat aplikasi dibuka kembali.
 
-Desain tampilan mengacu ke `../image/ui-ux/`. Folder ini tidak ada di git, jadi perlu disalin secara terpisah.
+Desain tampilan mengacu ke gambar di `../image/ui-ux/`.
 
 ## Kalau server tidak bisa dihubungi
 

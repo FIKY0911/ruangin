@@ -9,6 +9,7 @@ use App\Http\Resources\SessionResource;
 use App\Models\ClassSession;
 use App\Models\Lecturer;
 use App\Models\Semester;
+use App\Support\Like;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -24,8 +25,7 @@ class LecturerController extends Controller
 
         $lecturers = Lecturer::query()
             ->when($q !== '', function ($query) use ($q) {
-                $like = '%'.addcslashes(mb_strtolower($q), '%_\\').'%';
-                $query->whereRaw('LOWER(name) LIKE ?', [$like]);
+                $query->whereRaw(Like::sql('name'), [Like::contains($q)]);
             })
             ->orderBy('name')
             ->limit(100)

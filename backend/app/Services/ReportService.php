@@ -81,7 +81,7 @@ class ReportService
                 $session,
                 'emptyRoomReport',
                 "{$session->course_name}: laporan ruang kosong (".EmptyRoomReport::CONFIRMATION_LABEL.')',
-                "Seorang mahasiswa melaporkan {$session->room} kosong. "
+                "Seorang mahasiswa melaporkan {$session->place()} kosong. "
                     .'Status sesi tidak berubah sampai dikonfirmasi dosen/petugas.',
                 $reporter->id,
             );
@@ -142,7 +142,7 @@ class ReportService
                 $session,
                 'reportResolved',
                 "{$session->course_name}: laporan Anda dikonfirmasi",
-                "Terima kasih! Laporan ruang kosong di {$session->room} dikonfirmasi "
+                "Terima kasih! Laporan ruang kosong di {$session->place()} dikonfirmasi "
                     ."{$actor->role->label()}. Anda mendapat +{$points} poin.",
             );
 
@@ -166,7 +166,7 @@ class ReportService
                 $session,
                 'reportResolved',
                 "{$session->course_name}: laporan Anda ditolak",
-                "Laporan ruang kosong di {$session->room} ditolak {$actor->role->label()}. Jadwal sesi tidak berubah.",
+                "Laporan ruang kosong di {$session->place()} ditolak {$actor->role->label()}. Jadwal sesi tidak berubah.",
             );
 
             return $report->refresh();

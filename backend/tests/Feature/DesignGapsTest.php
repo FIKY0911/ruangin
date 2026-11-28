@@ -128,6 +128,25 @@ class DesignGapsTest extends TestCase
             ->assertNotFound()->assertJsonPath('code', 'notFound');
     }
 
+    public function test_active_semester_includes_its_first_and_last_day(): void
+    {
+        Semester::query()->delete();
+        Semester::create(['id' => 'sem-x', 'name' => 'Semester X', 'starts_on' => '2026-11-23', 'ends_on' => '2026-11-27']);
+        $nadia = $this->tokenFor('nadia@demo.ruangin.id');
+
+        foreach (['2026-11-23 00:00:00', '2026-11-23 09:45:00', '2026-11-27 23:59:59'] as $now) {
+            Carbon::setTestNow(Carbon::parse($now, 'Asia/Jakarta'));
+            $this->assertSame('sem-x', Semester::current()?->id, $now);
+            $this->tok($nadia)->getJson('/api/lecturers/l-rina/attendance')->assertOk()
+                ->assertJsonPath('data.semester.startsOn', '2026-11-23')
+                ->assertJsonPath('data.semester.endsOn', '2026-11-27');
+        }
+        foreach (['2026-11-22 23:59:59', '2026-11-28 00:00:00'] as $now) {
+            Carbon::setTestNow(Carbon::parse($now, 'Asia/Jakarta'));
+            $this->assertNull(Semester::current(), $now);
+        }
+    }
+
     public function test_attendance_without_active_semester_is_not_found(): void
     {
         Semester::query()->delete();
@@ -296,6 +315,26 @@ class DesignGapsTest extends TestCase
             ->assertJsonPath('sessions.0.status', 'batal');
     }
 
+    public function test_search_treats_underscore_and_percent_literally(): void
+    {
+        $this->makeSession('s-lab1', 'l-andi', 'Praktikum 50% Daring', 'Teknik Informatika', '2026-11-24 08:00', '2026-11-24 10:00', ['room' => 'Lab_1']);
+        $this->makeSession('s-labx', 'l-andi', 'Praktikum 500 Soal', 'Teknik Informatika', '2026-11-24 13:00', '2026-11-24 15:00', ['room' => 'Lab-1']);
+        Lecturer::create(['id' => 'l-under', 'name' => 'Dosen_Uji', 'prodi' => 'Akuntansi', 'faculty' => 'FEB']);
+        $nadia = $this->tokenFor('nadia@demo.ruangin.id');
+        $ids = fn (string $q) => array_column($this->tok($nadia)->getJson('/api/search?q='.urlencode($q))->assertOk()->json('sessions'), 'id');
+
+        $this->assertSame(['s-lab1'], $ids('lab_1'));   // _ is not "any character"
+        $this->assertSame(['s-labx'], $ids('lab-1'));
+        $this->assertSame(['s-lab1'], $ids('50%'));     // % is not "anything"
+        $this->assertSame(['s-lab1', 's-labx'], $ids('praktikum 50'));
+        $this->assertSame([], $ids('lab!1'));            // the escape character itself is literal
+
+        $this->tok($nadia)->getJson('/api/search?q=dosen_')->assertJsonPath('lecturers.0.id', 'l-under')->assertJsonCount(1, 'lecturers');
+        $this->tok($nadia)->getJson('/api/lecturers?q=dosen_')->assertJsonPath('data.0.id', 'l-under')->assertJsonCount(1, 'data');
+        $this->tok($nadia)->getJson('/api/lecturers?q=n_u')->assertJsonCount(1, 'data');   // "Dosen_Uji" only
+        $this->tok($nadia)->getJson('/api/lecturers?q=a_')->assertJsonCount(0, 'data');    // no literal "a_" in any name
+    }
+
     public function test_search_without_match_and_wildcards_return_nothing(): void
     {
         $nadia = $this->tokenFor('nadia@demo.ruangin.id');
@@ -377,6 +416,30 @@ class DesignGapsTest extends TestCase
         // ...and both get the early warning for Rina's later sessions today (10.30 and 13.00).
         $this->assertSame(2, count(array_keys($raka, 'earlyWarning')));
         $this->assertSame(2, count(array_keys($this->kindsFor('nadia@demo.ruangin.id'), 'earlyWarning')));
+    }
+
+    public function test_report_and_warning_bodies_name_building_and_room(): void
+    {
+        $this->as('raka@demo.ruangin.id')->putJson('/api/lecturers/l-rina/follow')->assertOk();
+        $nadia = $this->tokenFor('nadia@demo.ruangin.id');
+        $report = $this->tok($nadia)->postJson('/api/sessions/s-mobile-today/reports')->assertStatus(201)->json('data.id');
+
+        $body = fn (string $kind, string $user) => AppNotification::where('recipient_id', $user)->where('kind', $kind)->value('body');
+        $this->assertStringContainsString('melaporkan Gedung C · Ruang 306 kosong', $body('emptyRoomReport', 'a-raka'));
+        $this->assertStringContainsString('(Pemrograman Mobile, 07.30–10.00, Gedung C · Ruang 306) dilaporkan kosong', $body('earlyWarning', 'a-raka'));
+
+        $this->as('hendra@demo.ruangin.id')->postJson("/api/reports/{$report}/confirm")->assertOk();
+        $this->assertStringContainsString('di Gedung C · Ruang 306 dikonfirmasi', $body('reportResolved', 'a-nadia'));
+    }
+
+    public function test_reject_body_names_building_and_room(): void
+    {
+        $report = $this->as('nadia@demo.ruangin.id')->postJson('/api/sessions/s-mobile-today/reports')->assertStatus(201)->json('data.id');
+        $this->as('hendra@demo.ruangin.id')->postJson("/api/reports/{$report}/reject")->assertOk();
+        $this->assertStringContainsString(
+            'di Gedung C · Ruang 306 ditolak',
+            AppNotification::where('recipient_id', 'a-nadia')->where('kind', 'reportResolved')->value('body'),
+        );
     }
 
     public function test_early_warning_job_reaches_lecturer_followers(): void

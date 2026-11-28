@@ -7,6 +7,7 @@ use App\Http\Resources\LecturerResource;
 use App\Http\Resources\SessionResource;
 use App\Models\ClassSession;
 use App\Models\Lecturer;
+use App\Support\Like;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -30,10 +31,10 @@ class SearchController extends Controller
             ['q.required' => 'Kata kunci wajib diisi.', 'q.max' => 'Kata kunci maksimal 100 karakter.'],
         );
         $q = trim($data['q']);
-        $like = '%'.addcslashes(mb_strtolower($q), '%_\\').'%';
+        $like = Like::contains($q);
 
         $lecturers = Lecturer::query()
-            ->whereRaw('LOWER(name) LIKE ?', [$like])
+            ->whereRaw(Like::sql('name'), [$like])
             ->orderBy('name')
             ->limit(100)
             ->get();
@@ -44,8 +45,8 @@ class SearchController extends Controller
             ->with('lecturer')
             ->whereBetween('start_at', [$from, $to])
             ->where(fn ($w) => $w
-                ->whereRaw('LOWER(course_name) LIKE ?', [$like])
-                ->orWhereRaw('LOWER(room) LIKE ?', [$like]))
+                ->whereRaw(Like::sql('course_name'), [$like])
+                ->orWhereRaw(Like::sql('room'), [$like]))
             ->orderBy('start_at')
             ->orderBy('id')
             ->limit(self::SESSION_LIMIT)

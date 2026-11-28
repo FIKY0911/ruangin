@@ -67,7 +67,7 @@ class EarlyWarningService
                     'earlyWarning',
                     "{$session->course_name}: peringatan dini",
                     "Sesi lebih awal {$lecturerName} hari ini ({$locked->course_name}, "
-                        .Fmt::timeRange($locked->start_at, $locked->end_at).", {$locked->room}) {$reason}. "
+                        .Fmt::timeRange($locked->start_at, $locked->end_at).", {$locked->place()}) {$reason}. "
                         .'Status sesi Anda tidak berubah — cek lagi sebelum berangkat.',
                 );
             }

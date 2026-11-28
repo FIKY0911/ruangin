@@ -84,13 +84,13 @@ php artisan ruangin:prune-notifications   # atau jalankan manual
 Test memakai database `ruangin_test` (lihat `phpunit.xml`). Pastikan database itu sudah dibuat.
 
 ```bash
-php artisan test --testsuite=Feature
+php artisan test
 ```
 
 Tanpa MySQL, test juga bisa jalan di SQLite memori (butuh ekstensi `pdo_sqlite`):
 
 ```bash
-DB_CONNECTION=sqlite DB_DATABASE=:memory: php artisan test --testsuite=Feature
+DB_CONNECTION=sqlite DB_DATABASE=:memory: php artisan test
 ```
 
 ## Konvensi API

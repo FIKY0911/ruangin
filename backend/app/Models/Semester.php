@@ -25,8 +25,10 @@ class Semester extends Model
         $today = ($now ?? now())->toDateString();
 
         return static::query()
-            ->where('starts_on', '<=', $today)
-            ->where('ends_on', '>=', $today)
+            // whereDate: SQLite stores the date cast as "Y-m-d 00:00:00", so a
+            // plain string comparison would miss the first day.
+            ->whereDate('starts_on', '<=', $today)
+            ->whereDate('ends_on', '>=', $today)
             ->orderByDesc('starts_on')
             ->first();
     }

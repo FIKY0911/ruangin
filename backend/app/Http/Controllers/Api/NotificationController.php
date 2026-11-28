@@ -8,7 +8,10 @@ use App\Models\AppNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-/** P06: in-app notifications of the signed-in user. */
+/**
+ * P06: in-app notifications of the signed-in user. Only notifications inside
+ * the retention window are listed or counted (see AppNotification::retained).
+ */
 class NotificationController extends Controller
 {
     public function index(Request $request)
@@ -17,14 +20,19 @@ class NotificationController extends Controller
         $user = $request->user();
 
         $items = $user->appNotifications()
+            ->retained()
             ->when($data['unread'] ?? false, fn ($q) => $q->whereNull('read_at'))
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->limit(100)
             ->get();
 
+        $days = (int) config('ruangin.notification_retention_days');
+
         return NotificationResource::collection($items)->additional([
-            'unreadCount' => $user->appNotifications()->whereNull('read_at')->count(),
+            'unreadCount' => $user->appNotifications()->retained()->whereNull('read_at')->count(),
+            // "Notifikasi otomatis dihapus setelah N hari"; null = kept forever.
+            'retentionDays' => $days > 0 ? $days : null,
         ]);
     }
 

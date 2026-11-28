@@ -1,14 +1,17 @@
 <?php
 
+use App\Http\Controllers\Api\AppConfigController;
 use App\Http\Controllers\Api\AttendanceSyncController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DemoController;
 use App\Http\Controllers\Api\FollowController;
 use App\Http\Controllers\Api\LecturerController;
+use App\Http\Controllers\Api\LecturerFollowController;
 use App\Http\Controllers\Api\MeController;
 use App\Http\Controllers\Api\MessageDraftController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\SessionController;
 use App\Http\Controllers\Api\TestModeController;
 use Illuminate\Support\Facades\Route;
@@ -33,6 +36,18 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('lecturers', [LecturerController::class, 'index']);
     Route::get('lecturers/{lecturer}', [LecturerController::class, 'show']);
     Route::get('lecturers/{lecturer}/timeline', [LecturerController::class, 'timeline']);
+    Route::get('lecturers/{lecturer}/attendance', [LecturerController::class, 'attendance']);
+
+    // Cari dosen, mata kuliah, atau sesi
+    Route::get('search', SearchController::class);
+
+    // Ikuti dosen (semua sesinya)
+    Route::get('me/followed-lecturers', [LecturerFollowController::class, 'index']);
+    Route::put('lecturers/{id}/follow', [LecturerFollowController::class, 'store']);
+    Route::delete('lecturers/{id}/follow', [LecturerFollowController::class, 'destroy']);
+
+    // Label "Simulasi" + masa simpan notifikasi
+    Route::get('app-config', AppConfigController::class);
 
     // P03 / P05
     Route::get('sessions', [SessionController::class, 'index']);

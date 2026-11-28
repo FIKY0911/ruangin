@@ -43,6 +43,12 @@ class User extends Authenticatable
             ->withPivot('created_at');
     }
 
+    public function followedLecturers(): BelongsToMany
+    {
+        return $this->belongsToMany(Lecturer::class, 'lecturer_follows', 'user_id', 'lecturer_id')
+            ->withPivot('created_at');
+    }
+
     public function appNotifications(): HasMany
     {
         return $this->hasMany(AppNotification::class, 'recipient_id');

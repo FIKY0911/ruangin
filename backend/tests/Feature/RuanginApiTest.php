@@ -160,7 +160,7 @@ class RuanginApiTest extends TestCase
             ->assertJsonPath('data.0.sessionId', 's-mobile-today')
             ->assertJsonPath('data.0.title', 'Pemrograman Mobile: Pindah ruang: Ruang 306 → Ruang 402')
             ->json('data');
-        $this->assertStringContainsString('Senin, 23 Nov 2026 · 07.30–10.00 · Ruang 402', $notes[0]['body']);
+        $this->assertStringContainsString('Senin, 23 Nov 2026 · 07.30–10.00 · Gedung D · Ruang 402', $notes[0]['body']);
 
         $this->tok($nadia)->postJson("/api/notifications/{$notes[0]['id']}/read")->assertJsonPath('data.isRead', true);
         $this->tok($nadia)->getJson('/api/sessions/s-mobile-today')

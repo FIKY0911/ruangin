@@ -4,10 +4,12 @@ namespace Database\Seeders;
 
 use App\Models\ClassSession;
 use App\Models\Lecturer;
+use App\Models\Room;
+use App\Models\Semester;
 use App\Models\SessionChange;
 use App\Models\User;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Carbon;
 
 /**
  * SYNTHETIC demo data — a copy of app/lib/data/fixtures/seed_data.dart.
@@ -16,6 +18,13 @@ use Illuminate\Support\Carbon;
  * day of a demo.
  *
  * All demo accounts use the password "ruangin123".
+ *
+ * Besides the hand-written sessions below (the demo scenario), every session
+ * also repeats weekly through the active semester (14 weeks, today in week
+ * 11), so the per-semester attendance summary has history. Repeats never fall
+ * in the same week as the hand-written ones' dates, and their attendance is a
+ * fixed synthetic pattern (mostly "Tercatat", some "Belum terkonfirmasi",
+ * a few "Batal").
  */
 class DatabaseSeeder extends Seeder
 {
@@ -51,8 +60,26 @@ class DatabaseSeeder extends Seeder
         ['id' => 's-elda-later', 'lecturer_id' => 'l-rinaldi', 'course' => 'Elektronika Dasar', 'prodi' => 'Teknik Elektro', 'day' => 2, 'start' => '08:00', 'end' => '10:30', 'room' => 'Lab Elektro 1'],
     ];
 
+    /** Synthetic room catalog: which building each room is in. */
+    private const ROOMS = [
+        'Ruang 101' => 'Gedung A', 'Ruang 103' => 'Gedung A', 'Ruang 105' => 'Gedung A',
+        'Ruang 201' => 'Gedung B', 'Ruang 210' => 'Gedung B',
+        'Ruang 306' => 'Gedung C', 'Lab Komputer 2' => 'Gedung C',
+        'Ruang 402' => 'Gedung D', 'Ruang 404' => 'Gedung D',
+        'Lab Elektro 1' => 'Gedung Teknik',
+    ];
+
+    /** Active semester: 14 weeks, today in week 11. */
+    public const SEMESTER_WEEKS = 14;
+
+    public const SEMESTER_CURRENT_WEEK = 11;
+
     public function run(): void
     {
+        foreach (self::ROOMS as $name => $building) {
+            Room::create(['name' => $name, 'building' => $building]);
+        }
+
         foreach (self::LECTURERS as $l) {
             Lecturer::create($l);
         }
@@ -75,6 +102,15 @@ class DatabaseSeeder extends Seeder
 
         $today = now()->startOfDay();
         $at = fn (int $day, string $hhmm) => $today->copy()->addDays($day)->setTimeFromTimeString($hhmm);
+
+        $semesterStart = $today->copy()->startOfWeek(CarbonInterface::MONDAY)->subWeeks(self::SEMESTER_CURRENT_WEEK - 1);
+        $semesterEnd = $semesterStart->copy()->addWeeks(self::SEMESTER_WEEKS)->subDay();
+        Semester::create([
+            'id' => 'sem-demo',
+            'name' => self::semesterName($semesterStart),
+            'starts_on' => $semesterStart->toDateString(),
+            'ends_on' => $semesterEnd->toDateString(),
+        ]);
 
         foreach (self::SESSIONS as $s) {
             $created = $at($s['day'] - 7, '06:00');
@@ -107,6 +143,7 @@ class DatabaseSeeder extends Seeder
                 'start_at' => $at($s['day'], $s['start']),
                 'end_at' => $at($s['day'], $s['end']),
                 'room' => $s['room'],
+                'building' => self::ROOMS[$s['room']] ?? null,
                 'source' => $source,
                 'is_cancelled' => $cancelled,
                 'attendance_recorded_at' => $attendanceAt,
@@ -116,14 +153,100 @@ class DatabaseSeeder extends Seeder
             $session->updated_at = $updatedAt;
             $session->save();
 
-            foreach ($history as [$when, $actor, $text]) {
-                SessionChange::create([
-                    'class_session_id' => $session->id,
-                    'at' => $when,
-                    'actor' => $actor,
-                    'description' => $text,
-                ]);
-            }
+            $this->history($session, $history);
+
+            $this->seedWeeklyRepeats($s, $at, $semesterStart, $semesterEnd);
         }
+    }
+
+    /**
+     * Weekly occurrences of a hand-written session, ±7·k days (k ≠ 0) inside
+     * the semester. Past ones get a deterministic synthetic attendance mark.
+     */
+    private function seedWeeklyRepeats(array $s, \Closure $at, CarbonInterface $from, CarbonInterface $to): void
+    {
+        $now = now();
+        for ($k = -self::SEMESTER_WEEKS; $k <= self::SEMESTER_WEEKS; $k++) {
+            if ($k === 0) {
+                continue;
+            }
+            $day = $s['day'] + 7 * $k;
+            $start = $at($day, $s['start']);
+            $end = $at($day, $s['end']);
+            if ($start->lt($from) || $start->gt($to->copy()->endOfDay())) {
+                continue;
+            }
+
+            $id = $s['id'].($k < 0 ? '-m' : '-p').abs($k);
+            $created = $at($day - 7, '06:00');
+            $history = [[$created, 'Sistem', 'Jadwal diimpor dari data prodi (sintetis)']];
+            $source = config('ruangin.schedule_source');
+            $updatedAt = $created;
+            $cancelled = false;
+            $attendanceAt = null;
+
+            if ($end->lte($now)) {
+                // 1 in 12 cancelled, 1 in 12 left without a record, rest recorded.
+                $roll = crc32($id) % 12;
+                if ($roll === 0) {
+                    $cancelled = true;
+                    $updatedAt = $at($day, '06:30');
+                    $source = 'Petugas akademik (sintetis)';
+                    $history[] = [$updatedAt, 'Petugas akademik', 'Dibatalkan petugas (sintetis)'];
+                } elseif ($roll !== 1) {
+                    $attendanceAt = $start->copy()->addMinutes(3 + crc32($id.'t') % 6);
+                    $updatedAt = $attendanceAt;
+                    $source = config('ruangin.attendance_source');
+                    $history[] = [$attendanceAt, 'Sinkron absensi', 'Kehadiran kelas tercatat di sistem absensi'];
+                }
+            }
+
+            $session = new ClassSession([
+                'id' => $id,
+                'lecturer_id' => $s['lecturer_id'],
+                'external_id' => 'ABS-'.strtoupper(substr($id, 2)),
+                'course_name' => $s['course'],
+                'prodi' => $s['prodi'],
+                'start_at' => $start,
+                'end_at' => $end,
+                'room' => $s['room'],
+                'building' => self::ROOMS[$s['room']] ?? null,
+                'source' => $source,
+                'is_cancelled' => $cancelled,
+                'attendance_recorded_at' => $attendanceAt,
+                'attendance_source' => $attendanceAt ? config('ruangin.attendance_source') : null,
+            ]);
+            $session->created_at = $created;
+            $session->updated_at = $updatedAt;
+            $session->save();
+
+            $this->history($session, $history);
+        }
+    }
+
+    /** @param list<array{0: CarbonInterface, 1: string, 2: string}> $history */
+    private function history(ClassSession $session, array $history): void
+    {
+        foreach ($history as [$when, $actor, $text]) {
+            SessionChange::create([
+                'class_session_id' => $session->id,
+                'at' => $when,
+                'actor' => $actor,
+                'description' => $text,
+            ]);
+        }
+    }
+
+    /** "Semester Ganjil 2026/2027" (Aug–Jan start) or "Semester Genap 2026/2027" (Feb–Jul). */
+    private static function semesterName(CarbonInterface $start): string
+    {
+        $m = $start->month;
+        $y = $start->year;
+
+        return match (true) {
+            $m >= 8 => "Semester Ganjil {$y}/".($y + 1),
+            $m === 1 => 'Semester Ganjil '.($y - 1)."/{$y}",
+            default => 'Semester Genap '.($y - 1)."/{$y}",
+        };
     }
 }

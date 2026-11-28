@@ -4,26 +4,33 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\SessionResource;
+use App\Models\ClassSession;
 use App\Models\DeviceToken;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class MeController extends Controller
 {
     /**
-     * "Hari ini" card: followed sessions today (by start time), the next one
-     * that has not ended yet, and the unread notification count.
+     * "Hari ini" card: today's sessions the user follows directly or through a
+     * followed lecturer (by start time), the next one that has not ended yet,
+     * and the unread notification count.
      */
     public function today(Request $request)
     {
         $user = $request->user();
         $now = now();
 
-        $sessions = $user->followedSessions()
+        $sessions = ClassSession::query()
             ->with('lecturer')
             ->whereBetween('start_at', [$now->copy()->startOfDay(), $now->copy()->endOfDay()])
+            ->where(fn ($q) => $q
+                ->whereIn('id', DB::table('follows')->where('user_id', $user->id)->select('class_session_id'))
+                ->orWhereIn('lecturer_id', DB::table('lecturer_follows')->where('user_id', $user->id)->select('lecturer_id')))
             ->orderBy('start_at')
+            ->orderBy('id')
             ->get();
 
         $next = $sessions->first(fn ($s) => ! $s->is_cancelled && $s->end_at->gte($now));
@@ -31,7 +38,7 @@ class MeController extends Controller
         return SessionResource::collection($sessions)->additional([
             'date' => $now->toDateString(),
             'nextSessionId' => $next?->id,
-            'unreadCount' => $user->appNotifications()->whereNull('read_at')->count(),
+            'unreadCount' => $user->appNotifications()->retained()->whereNull('read_at')->count(),
             'points' => $user->points,
             'serverTime' => $now->toIso8601String(),
         ]);

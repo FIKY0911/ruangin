@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\AppNotification;
 use App\Services\EarlyWarningService;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -12,6 +13,22 @@ Artisan::command('ruangin:early-warnings', function (EarlyWarningService $servic
 })->purpose('Kirim peringatan dini untuk sesi yang belum terkonfirmasi lewat masa tenggang');
 
 Schedule::command('ruangin:early-warnings')->everyMinute()->withoutOverlapping();
+
+// "Notifikasi otomatis dihapus setelah 30 hari" (RUANGIN_NOTIFICATION_RETENTION_DAYS, 0 = keep).
+Artisan::command('ruangin:prune-notifications', function () {
+    $cutoff = AppNotification::retentionCutoff();
+    if ($cutoff === null) {
+        $this->info('Masa simpan notifikasi tidak dibatasi; tidak ada yang dihapus.');
+
+        return 0;
+    }
+    $deleted = AppNotification::where('created_at', '<', $cutoff)->delete();
+    $this->info("Notifikasi lebih lama dari {$cutoff->toDateTimeString()} dihapus: {$deleted}.");
+
+    return 0;
+})->purpose('Hapus notifikasi yang lebih lama dari masa simpan');
+
+Schedule::command('ruangin:prune-notifications')->dailyAt('02:00')->withoutOverlapping();
 
 // Exit code 0 = demo data is for today, 1 = stale/empty (used by start-backend.bat).
 Artisan::command('ruangin:demo-status', function () {

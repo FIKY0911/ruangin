@@ -1,6 +1,6 @@
 # Ruangin Backend (Laravel API)
 
-REST API untuk aplikasi Flutter Ruangin: login + role dari server, cari dosen, timeline lintas prodi, detail sesi + riwayat, edit sesi oleh dosen/petugas, ikuti sesi, notifikasi dalam app, lapor ruang kosong + konfirmasi, poin, sinkron absensi (simulasi), dan peringatan dini.
+REST API untuk aplikasi Flutter Ruangin: login + role dari server, cari dosen/mata kuliah/sesi, timeline lintas prodi, riwayat kehadiran per semester, detail sesi + riwayat, edit sesi oleh dosen/petugas, ikuti sesi atau dosen, notifikasi dalam app, lapor ruang kosong + konfirmasi, poin, sinkron absensi (simulasi), dan peringatan dini.
 
 Semua data seed **sintetis** (sama dengan `app/lib/data/fixtures/seed_data.dart`).
 
@@ -47,7 +47,7 @@ Keterangan:
 
 ### Data demo
 
-Jadwal seed memakai tanggal **relatif ke hari ini**. Reset di hari demo:
+Jadwal seed memakai tanggal **relatif ke hari ini**. Seed juga membuat satu semester aktif (14 minggu, hari ini di minggu ke-11) dan mengulang setiap sesi tiap minggu sepanjang semester itu, supaya riwayat kehadiran per semester ada isinya. Reset di hari demo:
 
 ```bash
 php artisan ruangin:reset-demo --force   # migrate:fresh --seed
@@ -71,12 +71,26 @@ php artisan schedule:work          # dev: cek tiap menit
 php artisan ruangin:early-warnings # atau jalankan manual sekali
 ```
 
+### Hapus notifikasi lama
+
+Notifikasi yang lebih lama dari `RUANGIN_NOTIFICATION_RETENTION_DAYS` hari (default 30, `0` = simpan selamanya) tidak ditampilkan lagi dan dihapus setiap hari pukul 02.00 oleh scheduler:
+
+```bash
+php artisan ruangin:prune-notifications   # atau jalankan manual
+```
+
 ### Test
 
 Test memakai database `ruangin_test` (lihat `phpunit.xml`). Pastikan database itu sudah dibuat.
 
 ```bash
-php artisan test
+php artisan test --testsuite=Feature
+```
+
+Tanpa MySQL, test juga bisa jalan di SQLite memori (butuh ekstensi `pdo_sqlite`):
+
+```bash
+DB_CONNECTION=sqlite DB_DATABASE=:memory: php artisan test --testsuite=Feature
 ```
 
 ## Konvensi API
@@ -123,6 +137,60 @@ php artisan test
 | GET | `/lecturers` | `q?` (nama sebagian, tidak peka huruf besar/kecil) | `{data: Lecturer[]}` urut nama |
 | GET | `/lecturers/{id}` | | `{data: Lecturer}` |
 | GET | `/lecturers/{id}/timeline` | `date?=YYYY-MM-DD` (default hari ini) | `{data: Session[], lecturer, date}` urut jam mulai, lintas prodi |
+| GET | `/lecturers/{id}/attendance` | | `{data: LecturerAttendance}` riwayat kehadiran semester aktif |
+
+`Lecturer`: `id, name, prodi, faculty, isFollowed`
+
+### Riwayat kehadiran per semester
+
+`GET /lecturers/{id}/attendance` mengembalikan semua sesi dosen di semester aktif (semester yang tanggal mulai–selesainya mencakup hari ini):
+
+```json
+{ "data": {
+  "lecturer": { "id": "l-rina", "name": "...", "prodi": "...", "faculty": "...", "isFollowed": false },
+  "semester": { "id": "sem-demo", "name": "Semester Ganjil 2026/2027", "startsOn": "2026-09-14", "endsOn": "2026-12-20" },
+  "summary": { "total": 66, "tercatat": 39, "belumTerkonfirmasi": 4, "batal": 3, "belumBerlangsung": 20, "counted": 43, "rate": 0.907 },
+  "courses": [
+    { "courseName": "Basis Data Lanjut", "prodi": "Sistem Informasi", "summary": { "...": "sama" },
+      "meetings": [ { "number": 1, "sessionId": "...", "start": "...", "end": "...", "room": "Ruang 201", "building": "Gedung B", "status": "tercatat" } ] }
+  ],
+  "generatedAt": "2026-11-23T09:45:00+07:00"
+} }
+```
+
+- `status` tiap pertemuan: `tercatat` (ada catatan absensi), `belumTerkonfirmasi` (sesi sudah selesai tanpa catatan), `batal`, atau `belumBerlangsung` (belum ada catatan dan sesi belum selesai). Sesi tanpa catatan **tidak pernah** dihitung "tidak hadir".
+- `rate` = `tercatat / (tercatat + belumTerkonfirmasi)`, atau `null` kalau belum ada sesi yang dihitung. Sesi batal dan yang belum berlangsung tidak ikut dihitung.
+- Pertemuan diberi nomor 1..n per mata kuliah (mata kuliah + prodi), urut waktu. Mata kuliah diurutkan menurut nama.
+- Tidak ada semester aktif → 404 `notFound` ("Belum ada semester aktif.").
+
+### Cari dosen, mata kuliah, atau sesi
+
+`GET /search?q=` (wajib, maks 100 karakter, tidak peka huruf besar/kecil, sebagian kata)
+
+```json
+{ "query": "mobile", "lecturers": [Lecturer], "sessions": [Session], "from": "2026-11-23", "to": "2026-11-29" }
+```
+
+- `lecturers`: nama dosen cocok, urut nama.
+- `sessions`: nama mata kuliah **atau** ruang cocok, dari hari ini sampai 6 hari ke depan, urut jam mulai, maks 50. Sesi batal ikut tampil (dengan status `batal`).
+- `q` kosong → 422 `invalidInput`.
+
+### Ikuti dosen
+
+| Method | Path | Hasil |
+|---|---|---|
+| PUT | `/lecturers/{id}/follow` | ikuti (idempoten), 404 kalau dosen tidak ada |
+| DELETE | `/lecturers/{id}/follow` | berhenti ikuti (idempoten) |
+| GET | `/me/followed-lecturers` | `{data: Lecturer[], lecturerIds: []}` urut nama |
+
+Mengikuti dosen = mengikuti **semua** sesinya: perubahan sesi, laporan ruang kosong, sinkron absensi, dan peringatan dini dikirim ke pengikut dosen juga. Orang yang mengikuti dosen sekaligus sesinya tetap hanya mendapat satu notifikasi per kejadian, dan pengubahnya sendiri tidak diberi notifikasi. Sesi hari ini milik dosen yang diikuti juga muncul di `GET /me/today`. `isFollowed` di `Session` tetap berarti sesi itu diikuti langsung.
+
+### Pengaturan app
+
+`GET /app-config` → `{data: {simulatedData, notificationRetentionDays}}`
+
+- `simulatedData` (`RUANGIN_SIMULATED_DATA`, default `true`): semua jadwal dan absensi adalah data sintetis / sinkron absensi simulasi. App menampilkan label "Simulasi" selama nilainya `true`.
+- `notificationRetentionDays` (`RUANGIN_NOTIFICATION_RETENTION_DAYS`, default 30): app menampilkan "Notifikasi otomatis dihapus setelah N hari". `null` kalau notifikasi disimpan selamanya.
 
 ### Sesi (P03, P05)
 
@@ -135,9 +203,10 @@ php artisan test
 | POST | `/sessions/{id}/cancel` | `version`, `reason?` | idem |
 | POST | `/sessions/{id}/attendance` | `version` | idem (catat kehadiran manual) |
 
-`Session`: `id, lecturerId, lecturer?, courseName, prodi, start, end, room, source, updatedAt, isCancelled, attendance{recordedAt, source}|null, history?[{at, actor, description}], status (tercatat|belumTerkonfirmasi|batal), statusLabel, statusExplanation, version, canEdit, isFollowed`
+`Session`: `id, lecturerId, lecturer?, courseName, prodi, start, end, room, building, source, updatedAt, isCancelled, attendance{recordedAt, source}|null, history?[{at, actor, description}], status (tercatat|belumTerkonfirmasi|batal), statusLabel, statusExplanation, version, canEdit, isFollowed`
 
 - `status` dihitung server: batal → `batal`, ada catatan absensi → `tercatat`, selain itu `belumTerkonfirmasi` (**tidak pernah** jadi batal hanya karena belum ada absensi).
+- `building` (Gedung) diambil dari katalog ruang (tabel `rooms`) setiap kali ruang diisi atau dipindah. Pencocokan nama ruang tidak peka huruf besar/kecil. Ruang yang tidak ada di katalog → `building: null`.
 - Setiap edit wajib mengirim `version` terakhir yang dilihat client. Kalau versinya sudah basi, server menjawab **409** `staleVersion`.
 - Setiap edit menambah riwayat, mengganti `source` menjadi "Petugas akademik · Nama", dan mengirim notifikasi `sessionChanged` ke semua pengikut (kecuali pengubahnya sendiri).
 
@@ -153,7 +222,7 @@ php artisan test
 
 | Method | Path | Hasil |
 |---|---|---|
-| GET | `/me/notifications?unread=1` | `{data: AppNotification[], unreadCount}`, terbaru dulu |
+| GET | `/me/notifications?unread=1` | `{data: AppNotification[], unreadCount, retentionDays}`, terbaru dulu, hanya yang belum lewat masa simpan |
 | POST | `/notifications/{id}/read` | tandai dibaca |
 | POST | `/me/notifications/read-all` | `{updated}` |
 
@@ -196,7 +265,7 @@ Kalau sebuah sesi dosen hari ini masih "Belum terkonfirmasi" 15 menit setelah mu
 
 ### Kartu "Hari ini"
 
-`GET /me/today` → `{data: Session[], date, nextSessionId, unreadCount, points, serverTime}`: sesi yang diikuti hari ini, urut jam mulai. `nextSessionId` adalah sesi yang belum batal dan belum selesai.
+`GET /me/today` → `{data: Session[], date, nextSessionId, unreadCount, points, serverTime}`: sesi hari ini yang diikuti langsung atau lewat dosen yang diikuti, urut jam mulai. `nextSessionId` adalah sesi yang belum batal dan belum selesai.
 
 ### Usulan pesan (P12)
 
@@ -254,7 +323,7 @@ app/
   Exceptions/DomainError.php        error bisnis -> JSON {message, code}
   Http/Controllers/Api/*            endpoint
   Http/Resources/*                  bentuk JSON (sama dengan model Dart)
-  Models/*                          Lecturer, User, ClassSession, SessionChange, AppNotification, EmptyRoomReport
+  Models/*                          Lecturer, User, ClassSession, SessionChange, AppNotification, EmptyRoomReport, Room, Semester
   Services/SessionService.php       edit sesi + riwayat + notifikasi + optimistic locking
   Services/ReportService.php        lapor kosong, konfirmasi/tolak, poin
   Services/EarlyWarningService.php  peringatan dini
@@ -267,4 +336,5 @@ database/seeders/DatabaseSeeder.php data demo sintetis
 routes/api.php, routes/console.php  route + command terjadwal
 tests/Feature/RuanginApiTest.php    skenario demo PRD §8 end-to-end
 tests/Feature/SystemFeaturesTest.php panel demo, mode uji, push, usulan pesan, Hari ini
+tests/Feature/DesignGapsTest.php    gedung, riwayat per semester, cari, ikuti dosen, Simulasi, masa simpan notifikasi
 ```

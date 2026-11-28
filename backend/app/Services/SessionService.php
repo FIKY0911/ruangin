@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Exceptions\DomainError;
 use App\Models\ClassSession;
+use App\Models\Room;
 use App\Models\User;
 use App\Support\Fmt;
 use Carbon\CarbonInterface;
@@ -53,6 +54,8 @@ class SessionService
             }
             $old = $s->room;
             $s->room = $newRoom;
+            // The building follows the room (catalog); unknown room => null.
+            $s->building = Room::buildingOf($newRoom);
 
             return ["Ruang dipindah: {$old} → {$newRoom}", "Pindah ruang: {$old} → {$newRoom}"];
         });
@@ -169,7 +172,7 @@ class SessionService
             'sessionChanged',
             "{$s->course_name}: {$notificationText}",
             Fmt::date($s->start_at).' · '.Fmt::timeRange($s->start_at, $s->end_at).' · '
-                .$s->room.' · status '.$s->statusLabel(),
+                .$s->place().' · status '.$s->statusLabel(),
             $actorId,
         );
 

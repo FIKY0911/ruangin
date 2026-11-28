@@ -19,6 +19,14 @@ return [
     // an early warning to followers of the lecturer's later sessions (P11).
     'early_warning_grace_minutes' => (int) env('RUANGIN_EARLY_WARNING_GRACE_MINUTES', 15),
 
+    // In-app notifications older than this many days are hidden and deleted
+    // by the daily `ruangin:prune-notifications` job. 0 = keep forever.
+    'notification_retention_days' => max(0, (int) env('RUANGIN_NOTIFICATION_RETENTION_DAYS', 30)),
+
+    // Every schedule and attendance record is synthetic / simulated (PRD §8,
+    // §10 "tandai data sintetis"). The app shows a "Simulasi" label while true.
+    'simulated_data' => (bool) env('RUANGIN_SIMULATED_DATA', true),
+
     // Demo panel endpoints (/api/demo/*). Turn off outside demos.
     'demo_mode' => (bool) env('RUANGIN_DEMO_MODE', true),
 

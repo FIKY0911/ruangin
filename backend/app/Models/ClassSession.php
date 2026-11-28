@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\HasPrefixedStringId;
 use App\Support\Fmt;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -25,9 +26,12 @@ class ClassSession extends Model
     public const STATUS_BELUM = 'belumTerkonfirmasi';
     public const STATUS_BATAL = 'batal';
 
+    /** Attendance summary only: no record yet and the session has not ended. */
+    public const MARK_UPCOMING = 'belumBerlangsung';
+
     protected $fillable = [
         'id', 'lecturer_id', 'external_id', 'course_name', 'prodi', 'start_at', 'end_at',
-        'room', 'source', 'is_cancelled', 'attendance_recorded_at', 'attendance_source',
+        'room', 'building', 'source', 'is_cancelled', 'attendance_recorded_at', 'attendance_source',
     ];
 
     protected function casts(): array
@@ -74,6 +78,28 @@ class ClassSession extends Model
         }
 
         return $this->attendance_recorded_at ? self::STATUS_TERCATAT : self::STATUS_BELUM;
+    }
+
+    /**
+     * Where the session stands in the attendance summary (riwayat kehadiran).
+     * Same derived rule as status(), plus "belumBerlangsung" for a session
+     * without a record that has not ended yet. A finished session without a
+     * record stays "belumTerkonfirmasi": never "tidak hadir" or "batal".
+     */
+    public function attendanceMark(CarbonInterface $now): string
+    {
+        return match (true) {
+            $this->is_cancelled => self::STATUS_BATAL,
+            $this->attendance_recorded_at !== null => self::STATUS_TERCATAT,
+            $this->end_at->gt($now) => self::MARK_UPCOMING,
+            default => self::STATUS_BELUM,
+        };
+    }
+
+    /** "Gedung C · Ruang 306", or just the room when the building is unknown. */
+    public function place(): string
+    {
+        return $this->building ? "{$this->building} · {$this->room}" : $this->room;
     }
 
     public function statusLabel(): string

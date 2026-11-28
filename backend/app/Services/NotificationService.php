@@ -13,7 +13,8 @@ class NotificationService
     public function __construct(private readonly PushService $push) {}
 
     /**
-     * Notifies every follower of $session except $excludeUserId.
+     * Notifies everyone who follows $session or its lecturer, once each,
+     * except $excludeUserId.
      *
      * @return int number of notifications created
      */
@@ -24,13 +25,24 @@ class NotificationService
         string $body,
         ?string $excludeUserId = null,
     ): int {
-        $ids = DB::table('follows')
-            ->where('class_session_id', $session->id)
-            ->when($excludeUserId, fn ($q) => $q->where('user_id', '!=', $excludeUserId))
-            ->pluck('user_id')
-            ->all();
+        return $this->notifyUsers($this->followerIds($session, $excludeUserId), $session, $kind, $title, $body);
+    }
 
-        return $this->notifyUsers($ids, $session, $kind, $title, $body);
+    /** @return list<string> ids of session followers + lecturer followers, without duplicates */
+    public function followerIds(ClassSession $session, ?string $excludeUserId = null): array
+    {
+        $sessionFollowers = DB::table('follows')
+            ->where('class_session_id', $session->id)
+            ->pluck('user_id');
+        $lecturerFollowers = DB::table('lecturer_follows')
+            ->where('lecturer_id', $session->lecturer_id)
+            ->pluck('user_id');
+
+        return $sessionFollowers->merge($lecturerFollowers)
+            ->unique()
+            ->reject(fn ($id) => $excludeUserId !== null && $id === $excludeUserId)
+            ->values()
+            ->all();
     }
 
     /**

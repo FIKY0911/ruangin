@@ -30,6 +30,8 @@ class SessionResource extends JsonResource
             'start' => $this->start_at->toIso8601String(),
             'end' => $this->end_at->toIso8601String(),
             'room' => $this->room,
+            // From the room catalog when the room was set; null if unknown.
+            'building' => $this->building,
             'source' => $this->source,
             'updatedAt' => $this->updated_at->toIso8601String(),
             'isCancelled' => $this->is_cancelled,

@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Models\Concerns\HasPrefixedStringId;
+use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -25,6 +27,26 @@ class AppNotification extends Model
     protected function casts(): array
     {
         return ['seen_at' => 'datetime', 'read_at' => 'datetime', 'created_at' => 'datetime'];
+    }
+
+    /**
+     * Notifications still inside the retention window
+     * (config ruangin.notification_retention_days, 0 = all), so the
+     * "dihapus setelah N hari" note holds even before the prune job runs.
+     */
+    public function scopeRetained(Builder $query): Builder
+    {
+        $cutoff = self::retentionCutoff();
+
+        return $cutoff ? $query->where('created_at', '>=', $cutoff) : $query;
+    }
+
+    /** Oldest created_at that is kept, or null when nothing expires. */
+    public static function retentionCutoff(): ?CarbonInterface
+    {
+        $days = (int) config('ruangin.notification_retention_days');
+
+        return $days > 0 ? now()->subDays($days) : null;
     }
 
     public function recipient(): BelongsTo

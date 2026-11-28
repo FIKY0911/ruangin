@@ -54,18 +54,20 @@ Menu bawah: **Beranda · Jadwal · Laporan · Profil**.
 
 | Layar | Isinya |
 |---|---|
-| Beranda | Logo, pencarian dosen, notifikasi, peringatan dini (kotak merah muda kalau ada), dan sesi hari ini. Dosen dan petugas melihat sesi yang bisa mereka ubah. |
-| Cari dosen | Hasil pencarian dengan gambar ilustrasi, dan tampilan "Tidak ada hasil". Menu bawah tetap terlihat. |
-| Profil dosen | Header biru, kehadiran minggu ini, pilihan hari Senin–Jumat (panah untuk ganti minggu), dan sesi di hari itu. |
-| Riwayat kehadiran | Ringkasan kehadiran minggu ini (persen tercatat) dan kotak bernomor untuk tiap sesi. Dibuka dari "Lihat riwayat" di profil dosen. |
-| Detail sesi | Status, jam, tanggal, ruang, prodi, riwayat perubahan, tombol Ikuti, lapor ruang kosong, dan salin draf pesan ke dosen. |
+| Beranda | Logo, pencarian (sesi, dosen, atau mata kuliah), notifikasi, peringatan dini (kotak merah muda kalau ada), label "Simulasi", dan sesi hari ini: sesi yang diikuti dan sesi dosen yang diikuti, dengan jam · gedung · ruang. Dosen dan petugas melihat sesi yang bisa mereka ubah. |
+| Cari | Cari dosen (nama), mata kuliah, atau ruang. Sesi yang cocok diambil dari hari ini sampai 6 hari ke depan. Hasil dengan gambar ilustrasi, dan tampilan "Tidak ada hasil". Menu bawah tetap terlihat. |
+| Profil dosen | Header biru, tombol Ikuti/Diikuti (dapat kabar untuk semua sesi dosen itu), kehadiran semester ini ("Tercatat di X dari Y sesi"), pilihan hari Senin–Jumat (panah untuk ganti minggu), dan sesi di hari itu dengan gedung dan ruang. |
+| Riwayat kehadiran | Semester aktif: ringkasan (persen tercatat) dan kotak "Pertemuan 1–n" untuk tiap mata kuliah. Sesi tanpa catatan absensi ditulis "Belum terkonfirmasi", bukan "Tidak hadir". Dibuka dari "Lihat riwayat" di profil dosen. |
+| Detail sesi | Status, sumber dan label "Simulasi", jam (dengan tanggal), gedung, ruang, prodi, riwayat perubahan, tombol Ikuti, lapor ruang kosong, dan salin draf pesan ke dosen. |
 | Lapor ruang kosong | Lembar konfirmasi dari bawah layar sebelum laporan dikirim. |
 | Ubah sesi | Ganti ruang, jam, batalkan sesi, atau catat kehadiran. Dosen dan petugas saja. |
 | Jadwal | Sesi yang Anda ikuti. Dosen dan petugas juga melihat "Kelola". |
 | Laporan | Untuk dosen dan petugas: daftar laporan ruang kosong untuk dikonfirmasi atau ditolak. Untuk mahasiswa: poin dan hasil laporan Anda. |
-| Notifikasi | Pilihan "Semua" atau "Belum dibaca", dikelompokkan "Hari ini" dan "Sebelumnya". |
+| Notifikasi | Pilihan "Semua" atau "Belum dibaca", dikelompokkan "Hari ini" dan "Sebelumnya". Di bawah daftar: "Notifikasi otomatis dihapus setelah 30 hari" (angkanya dari server). |
 | Profil | Data akun dan tombol keluar. Petugas juga melihat Panel demo. |
 | Mode uji | Stopwatch untuk tugas uji pengguna. |
+
+Label "Simulasi" / "Data simulasi" hanya muncul selama server melaporkan bahwa semua jadwal dan absensi adalah data contoh (`GET /app-config`, `simulatedData`).
 
 Desain tampilan mengacu ke `../image/ui-ux/`. Folder ini tidak ada di git, jadi perlu disalin secara terpisah.
 

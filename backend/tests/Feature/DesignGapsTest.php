@@ -515,6 +515,66 @@ class DesignGapsTest extends TestCase
             ->assertJsonPath('retentionDays', null);
     }
 
+    private function notificationAt(string $id, Carbon $createdAt, ?Carbon $seenAt, string $userId = 'a-nadia'): void
+    {
+        AppNotification::create([
+            'id' => $id,
+            'recipient_id' => $userId,
+            'class_session_id' => 's-mobile-today',
+            'kind' => 'sessionChanged',
+            'title' => $id,
+            'body' => '',
+            'seen_at' => $seenAt,
+            'created_at' => $createdAt,
+        ]);
+    }
+
+    public function test_prune_keeps_seen_notifications_from_test_run_days(): void
+    {
+        // A mode-uji test run on Wed 14 Oct 2026 (40 days ago), 10.00–10.05.
+        $testDay = Carbon::parse('2026-10-14 10:00:00', 'Asia/Jakarta');
+        \App\Models\TestRun::create([
+            'user_id' => 'a-nadia', 'participant_code' => 'P01', 'task' => 'cari ruang', 'method' => 'ruangin',
+            'started_at' => $testDay, 'finished_at' => $testDay->copy()->addMinutes(5),
+        ]);
+        $otherDay = Carbon::parse('2026-10-15 10:00:00', 'Asia/Jakarta');
+
+        $this->notificationAt('n-test-seen', $testDay->copy()->addMinute(), $testDay->copy()->addMinute()->addSeconds(7));
+        $this->notificationAt('n-test-seen-late', $testDay->copy()->setTime(23, 50), $testDay->copy()->setTime(23, 59), 'a-raka');
+        $this->notificationAt('n-test-unseen', $testDay->copy()->addMinutes(2), null);
+        $this->notificationAt('n-other-seen', $otherDay, $otherDay->copy()->addSeconds(3));
+        $this->notificationAt('n-other-unseen', $otherDay, null);
+        $this->notificationAt('n-recent-unseen', now()->subDays(2), null);
+
+        $this->artisan('ruangin:prune-notifications')->assertSuccessful();
+
+        $this->assertEqualsCanonicalizing(
+            ['n-test-seen', 'n-test-seen-late', 'n-recent-unseen'],
+            AppNotification::pluck('id')->all(),
+        );
+        // Kept for the report, but still hidden from the user's own list (older than 30 days).
+        $this->as('nadia@demo.ruangin.id')->getJson('/api/me/notifications')
+            ->assertJsonPath('data.0.id', 'n-recent-unseen')->assertJsonCount(1, 'data');
+
+        // The latency report for the test day still has its data after the prune.
+        $this->as('hendra@demo.ruangin.id')->getJson('/api/test/notification-latency?date=2026-10-14')->assertOk()
+            ->assertJsonPath('summary.all.n', 2)
+            ->assertJsonPath('data.1.notificationId', 'n-test-seen')
+            ->assertJsonPath('data.1.latencySeconds', 7);
+        $this->getJson('/api/test/notification-latency?date=2026-10-15')->assertOk()->assertJsonPath('summary.all.n', 0);
+    }
+
+    public function test_prune_without_test_runs_deletes_seen_and_unseen_old_rows(): void
+    {
+        $old = now()->subDays(31);
+        $this->notificationAt('n-old-seen', $old, $old->copy()->addSeconds(5));
+        $this->notificationAt('n-old-unseen', $old, null);
+        $this->notificationAt('n-new-seen', now()->subDay(), now()->subDay());
+
+        $this->artisan('ruangin:prune-notifications')->assertSuccessful();
+        $this->assertSame(['n-new-seen'], AppNotification::pluck('id')->all());
+    }
+
     public function test_prune_command_deletes_only_expired_notifications(): void
     {
         $this->notificationAgedDays('a-nadia', 'n-old', 45);

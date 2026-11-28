@@ -22,8 +22,11 @@ Artisan::command('ruangin:prune-notifications', function () {
 
         return 0;
     }
-    $deleted = AppNotification::where('created_at', '<', $cutoff)->delete();
-    $this->info("Notifikasi lebih lama dari {$cutoff->toDateTimeString()} dihapus: {$deleted}.");
+    // Seen notifications from days with a mode-uji test run are kept for the
+    // notification-latency report (see AppNotification::pruneExpired).
+    $deleted = AppNotification::pruneExpired();
+    $this->info("Notifikasi lebih lama dari {$cutoff->toDateTimeString()} dihapus: {$deleted} "
+        .'(data uji jeda notifikasi tetap disimpan).');
 
     return 0;
 })->purpose('Hapus notifikasi yang lebih lama dari masa simpan');

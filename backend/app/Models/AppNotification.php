@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\HasPrefixedStringId;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -47,6 +48,51 @@ class AppNotification extends Model
         $days = (int) config('ruangin.notification_retention_days');
 
         return $days > 0 ? now()->subDays($days) : null;
+    }
+
+    /**
+     * Deletes notifications older than the retention period, except the ones
+     * that are user-test evidence: a notification that was seen (seen_at set)
+     * on a day (campus date of created_at) when a mode-uji test run started
+     * or finished. Those rows feed GET /test/notification-latency (PRD §3
+     * "jeda notifikasi") and are kept. They stay hidden from the user's own
+     * list because of retained().
+     *
+     * @return int number of notifications deleted (0 when retention is off)
+     */
+    public static function pruneExpired(): int
+    {
+        $cutoff = self::retentionCutoff();
+        if ($cutoff === null) {
+            return 0;
+        }
+
+        $tz = config('app.timezone');
+        $testDays = TestRun::query()
+            ->get(['started_at', 'finished_at'])
+            ->flatMap(fn (TestRun $r) => array_filter([$r->started_at, $r->finished_at]))
+            ->map(fn ($t) => $t->copy()->setTimezone($tz)->toDateString())
+            ->unique()
+            ->values();
+
+        return static::query()
+            ->where('created_at', '<', $cutoff)
+            ->where(function (Builder $q) use ($testDays, $tz) {
+                $q->whereNull('seen_at');
+                if ($testDays->isNotEmpty()) {
+                    $q->orWhere(function (Builder $seen) use ($testDays, $tz) {
+                        foreach ($testDays as $day) {
+                            $start = Carbon::parse($day, $tz)->startOfDay();
+                            $seen->whereNot(fn (Builder $d) => $d
+                                ->where('created_at', '>=', $start)
+                                ->where('created_at', '<', $start->copy()->addDay()));
+                        }
+                    });
+                } else {
+                    $q->orWhereNotNull('seen_at');
+                }
+            })
+            ->delete();
     }
 
     public function recipient(): BelongsTo

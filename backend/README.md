@@ -79,6 +79,8 @@ Notifikasi yang lebih lama dari `RUANGIN_NOTIFICATION_RETENTION_DAYS` hari (defa
 php artisan ruangin:prune-notifications   # atau jalankan manual
 ```
 
+Pengecualian untuk data uji: notifikasi lama **tidak dihapus** kalau notifikasi itu sudah pernah tampil di app (`seen_at` terisi) **dan** dibuat pada hari yang sama dengan hari mode uji berjalan (hari mulai atau selesai sebuah `test_runs`). Notifikasi ini dipakai laporan jeda notifikasi (`GET /test/notification-latency`), jadi hasil uji tidak hilang. Pengguna tetap tidak melihatnya lagi di daftar notifikasinya setelah lewat masa simpan. Notifikasi lain yang sudah lewat masa simpan tetap dihapus, termasuk yang sudah dilihat di hari tanpa mode uji.
+
 ### Test
 
 Test memakai database `ruangin_test` (lihat `phpunit.xml`). Pastikan database itu sudah dibuat.

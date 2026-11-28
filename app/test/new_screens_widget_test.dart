@@ -311,6 +311,46 @@ void main() {
     expect(find.byKey(const Key('retention-note')), findsNothing);
   });
 
+  testWidgets(
+    'Simulasi stays visible when /app-config fails; refresh retries',
+    (tester) async {
+      backend.failAppConfig = true;
+      await backend.signInAs('u-nadia', store);
+      await pumpApp(tester, backend, store);
+      expect(find.byKey(const Key('simulated-chip')), findsOneWidget);
+      final calls = backend.calls('GET', '/app-config').length;
+      expect(calls, greaterThanOrEqualTo(1));
+
+      // Server recovers and reports real (non-simulated) data: pull to refresh.
+      backend
+        ..failAppConfig = false
+        ..simulatedData = false;
+      await tester.fling(
+        find.byKey(const Key('home-greeting')),
+        const Offset(0, 500),
+        1000,
+      );
+      await tester.pumpAndSettle();
+      expect(backend.calls('GET', '/app-config').length, greaterThan(calls));
+      expect(find.byKey(const Key('simulated-chip')), findsNothing);
+    },
+  );
+
+  testWidgets('app resume fetches /app-config again', (tester) async {
+    backend.failAppConfig = true;
+    await backend.signInAs('u-nadia', store);
+    await pumpApp(tester, backend, store);
+    expect(find.byKey(const Key('simulated-chip')), findsOneWidget);
+
+    backend
+      ..failAppConfig = false
+      ..simulatedData = false;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('simulated-chip')), findsNothing);
+  });
+
   testWidgets('notifications: Semua / Belum dibaca filters and groups', (
     tester,
   ) async {

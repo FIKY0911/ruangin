@@ -34,6 +34,9 @@ class FakeBackend {
 
   /// `GET /app-config`.
   bool simulatedData = true;
+
+  /// `GET /app-config` answers 500 while true.
+  bool failAppConfig = false;
   int? retentionDays = 30;
 
   /// Active semester (backend `semesters`): 14 weeks, [now] in week 11.
@@ -517,6 +520,7 @@ class FakeBackend {
     }
 
     if (m == 'GET' && path == '/app-config') {
+      if (failAppConfig) return _error(500, 'serverError', 'Server error.');
       return _json({
         'data': {
           'simulatedData': simulatedData,

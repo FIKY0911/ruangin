@@ -8,9 +8,11 @@ class AppConfig {
     required this.notificationRetentionDays,
   });
 
-  /// Nothing is claimed until the server says so.
+  /// Before `/app-config` answers (or when it fails): keep the "Simulasi"
+  /// label (the server default, and the safe side of PRD §10); claim no
+  /// retention period.
   static const unknown = AppConfig(
-    simulatedData: false,
+    simulatedData: true,
     notificationRetentionDays: null,
   );
 

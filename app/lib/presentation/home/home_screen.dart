@@ -11,6 +11,7 @@ import '../../data/models/app_notification.dart';
 import '../../data/models/session.dart';
 import '../../data/repositories/repositories.dart';
 import '../../domain/greeting.dart';
+import '../app_config_controller.dart';
 import '../auth/auth_controller.dart';
 import '../notifications/notification_center.dart';
 import '../notifications/notifications_screen.dart';
@@ -196,7 +197,10 @@ class _HomeView extends StatelessWidget {
                 ),
                 Expanded(
                   child: RefreshIndicator(
-                    onRefresh: controller.load,
+                    onRefresh: () => Future.wait([
+                      controller.load(),
+                      context.read<AppConfigController>().reload(),
+                    ]),
                     child: ListView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: EdgeInsets.only(
